@@ -34,6 +34,7 @@ struct Token {
 class Lexer {
 private:
     std::string source;
+public:
     std::vector<Token> tokens;
     int start = 0;
     int current = 0;
@@ -52,10 +53,10 @@ private:
     void scanNumber();
     void scanIdentifier();
 
-public:
+
     std::vector<Token> getTokens() { return tokens; }
-    Lexer(const std::string& source);
-    std::vector<Token> scanTokens();
+    explicit Lexer(const std::string& source);
+    std::vector<Token> scanTokens(); 
 };
 
 #endif // WYZER_LEXER_H

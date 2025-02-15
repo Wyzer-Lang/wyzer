@@ -11,5 +11,8 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 add_executable(wyzer src/main.cpp src/lexer.cpp src/parser.cpp src/ir_gen.cpp)
+add_library(lexer STATIC src/lexer.cpp)
+target_link_libraries(wyzer lexer)
+
 
 target_link_libraries(wyzer LLVM)

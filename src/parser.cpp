@@ -4,6 +4,7 @@
 #include <memory>
 #include <initializer_list>
 #include <stdexcept>
+#include <iostream>
 
 BinaryExpr::BinaryExpr(std::unique_ptr<Expr> left, Token op, std::unique_ptr<Expr> right)
     : left(std::move(left)), op(op), right(std::move(right)) {}
@@ -175,3 +176,4 @@ std::vector<std::unique_ptr<Stmt>> Parser::parse() {
     }
     return statements;
 }
+

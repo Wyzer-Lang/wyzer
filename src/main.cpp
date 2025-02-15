@@ -5,6 +5,8 @@
 #include "include/parser.h"
 #include "include/ir_gen.h"
 
+
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <file.wyz>\n";
@@ -26,9 +28,13 @@ int main(int argc, char** argv) {
 
     Parser parser(tokens);
     std::vector<std::unique_ptr<Stmt>> statements = parser.parse();
+    std::cout << "Parsing tokens:\n";
+    for (const auto& token : tokens) {
+    std::cout << "Token: " << token.lexeme << " (Type: " << static_cast<int>(token.type) << ")\n";
+}
 
-    
-    LLVMCodeGen codegen; 
+
+    LLVMCodeGen codegen;
     codegen.generate(statements);
 
     return 0;

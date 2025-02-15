@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Wl,--dependency-file=CMakeFiles/wyzer.dir/link.d CMakeFiles/wyzer.dir/src/main.cpp.o CMakeFiles/wyzer.dir/src/lexer.cpp.o CMakeFiles/wyzer.dir/src/parser.cpp.o CMakeFiles/wyzer.dir/src/ir_gen.cpp.o -o wyzer  liblexer.a /usr/lib/libLLVM.so.19.1
