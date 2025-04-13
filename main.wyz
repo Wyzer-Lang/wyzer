@@ -1,5 +1,6 @@
-fnc main() {
-    loop {
-        log("MEOW :3 ");
-    }
+fnc main(a:int , b:int) -> int {
+
+        logln("Sum of 1 + 1");
+        logln(1 + 1);
+    
 }
