@@ -1,0 +1,5 @@
+fnc main() {
+    loop {
+        log("MEOW :3 ");
+    }
+}
