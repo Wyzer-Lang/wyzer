@@ -61,7 +61,7 @@ PHASE 3: SEMANTIC ANALYSIS
 - [ ] Add scoping and symbol table
 - [ ] No duplicate function names
 
-PHASE 4: INTERPRETER (Optional)
+PHASE 4: INTERPRETER
 -------------------------------
 
 - [ ] Evaluate return & binary expressions
@@ -70,7 +70,7 @@ PHASE 4: INTERPRETER (Optional)
 - [ ] Maintain runtime variable scope
 - [ ] Call user-defined functions
 
-PHASE 5: COMPILER (Optional)
+PHASE 5: COMPILER (USING LLVM IR)
 ----------------------------
 
 - [ ] Generate intermediate representation (IR)
