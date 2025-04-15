@@ -25,6 +25,7 @@ enum class TokenType {
     LT,
     GT,
     AND,
+    EQUAL,
     STAR,
     ASSIGN,
     LPAREN,

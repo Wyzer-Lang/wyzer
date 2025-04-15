@@ -7,15 +7,17 @@
 #include <optional>
 #include <iostream>
 
-
 struct ASTNode {
     virtual ~ASTNode() = default;
 };
-
 struct Program : ASTNode {
     std::vector<std::shared_ptr<ASTNode>> declarations;
 };
 
+class Stmt : public ASTNode {
+public:
+    virtual ~Stmt() = default;
+};
 
 struct Expr : public ASTNode {};
 
@@ -29,7 +31,7 @@ struct VariableExpr : public Expr {
     explicit VariableExpr(std::string n) : name(std::move(n)) {}
 };
 
-struct BinaryExpr : public Expr {
+struct BinaryExpr : Expr {
     std::string op;
     std::unique_ptr<Expr> left;
     std::unique_ptr<Expr> right;
@@ -39,10 +41,10 @@ struct BinaryExpr : public Expr {
 };
 
 
-class Stmt : public ASTNode {
-    public:
-        virtual ~Stmt() = default;
-    };
+struct LoopStmt : public Stmt {
+    std::vector<std::unique_ptr<Stmt>> body;
+    explicit LoopStmt(std::vector<std::unique_ptr<Stmt>> b) : body(std::move(b)) {}
+};
 
 struct PrintStmt : public Stmt {
     std::unique_ptr<Expr> expr;
@@ -55,11 +57,6 @@ struct PrintStmt : public Stmt {
 struct ReturnStmt : public Stmt {
     std::unique_ptr<Expr> expr;
     explicit ReturnStmt(std::unique_ptr<Expr> e) : expr(std::move(e)) {}
-};
-
-struct LoopStmt : public Stmt {
-    std::vector<std::unique_ptr<Stmt>> body;
-    explicit LoopStmt(std::vector<std::unique_ptr<Stmt>> b) : body(std::move(b)) {}
 };
 
 struct Param {
@@ -77,6 +74,7 @@ struct FunctionDecl : public ASTNode {
     FunctionDecl(std::string n, std::vector<Param> p, std::string r, std::vector<std::unique_ptr<Stmt>> b)
         : name(std::move(n)), params(std::move(p)), returnType(std::move(r)), body(std::move(b)) {}
 };
+
 struct IfStmt : Stmt {
     std::unique_ptr<Expr> condition;
     std::vector<std::unique_ptr<Stmt>> thenBranch;
@@ -90,11 +88,13 @@ struct IfStmt : Stmt {
 
 struct VariableDeclStmt : Stmt {
     std::string name;
-    std::unique_ptr<Expr> expr;
+    std::string type;
+    std::unique_ptr<Expr> initializer;
 
-    VariableDeclStmt(std::string name, std::unique_ptr<Expr> expr)
-        : name(std::move(name)), expr(std::move(expr)) {}
+    VariableDeclStmt(std::string n, std::string t, std::unique_ptr<Expr> init)
+        : name(std::move(n)), type(std::move(t)), initializer(std::move(init)) {}
 };
+
 
 
 class Parser {
@@ -103,10 +103,13 @@ class Parser {
         std::unique_ptr<FunctionDecl> parseFunction();
         std::unique_ptr<Stmt> parseStatement();
         std::shared_ptr<Program> parse();
-        void consume(TokenType type, const std::string& errorMessage);
+        
         std::unique_ptr<Expr> parseExpr();
         std::vector<std::unique_ptr<Stmt>> parseBlock();
         std::unique_ptr<Stmt> parseVariableDecl();
+        
+        void consumeWithValue(TokenType type, const std::string& value, const std::string& errorMessage);
+
     
     private:
         std::vector<Token> tokens;
@@ -123,6 +126,8 @@ class Parser {
         std::unique_ptr<Expr> parsePrimary();
         int getPrecedence(const Token& tok);
         std::unique_ptr<Stmt> parseIfStmt();
+        void consume(TokenType type, const std::string& errorMessage);
+
         std::unique_ptr<Stmt> parseLoop();
         void checkForMain(const std::shared_ptr<Program>& program);
     };

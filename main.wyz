@@ -1,9 +1,3 @@
-fnc main() -> void {
-    logln(10 % 3);  
-    logln(10 == 10);  
-    logln(10 != 5);   
-    logln(5 < 10); 
-    logln(15 > 10);  
-    logln(5 <= 10);   
-    logln(15 >= 10);  
+fnc main() {
+    
 }

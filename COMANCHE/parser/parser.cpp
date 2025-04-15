@@ -65,18 +65,18 @@ std::unique_ptr<FunctionDecl> Parser::parseFunction() {
         }
         advance();
         std::string paramName = nameTok.value;
-    
+
         expect(TokenType::COLON, "colon ':' after parameter name");
-    
+
         const Token& typeTok = peek();
         if (typeTok.type != TokenType::IDENTIFIER && typeTok.type != TokenType::KEYWORD) {
             throw std::runtime_error("Expected parameter type at line " + std::to_string(typeTok.line) + ", got '" + typeTok.value + "'");
         }
         advance();
         std::string paramType = typeTok.value;
-    
+
         params.push_back({paramName, paramType});
-    
+
         if (!match(TokenType::COMMA)) {
             expect(TokenType::RPAREN, "closing parenthesis ')' after parameters");
             break;
@@ -84,19 +84,22 @@ std::unique_ptr<FunctionDecl> Parser::parseFunction() {
     }
 
     std::string returnType = "void";
-
     if (match(TokenType::ARROW)) {
-        if (peek().type != TokenType::IDENTIFIER && peek().type != TokenType::KEYWORD) {
-            throw std::runtime_error("Expected return type after '->' at line " + std::to_string(peek().line));
+        const Token& retTypeTok = peek();
+        if (retTypeTok.type != TokenType::IDENTIFIER && retTypeTok.type != TokenType::KEYWORD) {
+            throw std::runtime_error("Expected return type after '->' at line " + std::to_string(retTypeTok.line));
         }
         advance();
-        returnType = tokens[pos - 1].value;
+        returnType = retTypeTok.value;
     }
 
     expect(TokenType::LBRACE, "function body '{'");
 
     std::vector<std::unique_ptr<Stmt>> body;
     while (!match(TokenType::RBRACE)) {
+        if (peek().type == TokenType::END_OF_FILE) {
+            throw std::runtime_error("Unclosed function body (missing '}') starting at line " + std::to_string(funcTok.line));
+        }
         body.push_back(parseStatement());
     }
 
@@ -109,21 +112,44 @@ void Parser::consume(TokenType type, const std::string& errorMessage) {
     }
 }
 
-std::unique_ptr<Stmt> Parser::parseVariableDecl() {
-    //expect(TokenType::KEYWORD, "let");
 
-    
+void Parser::consumeWithValue(TokenType type, const std::string& value, const std::string& errorMessage) {
+    if (peek().type == type && peek().value == value) {
+        advance();
+    } else {
+        throw std::runtime_error("Expected " + errorMessage + " at line " + std::to_string(peek().line));
+    }
+}
+
+
+std::unique_ptr<Stmt> Parser::parseVariableDecl() {
     const Token& varNameTok = peek();
     if (varNameTok.type != TokenType::IDENTIFIER) {
         throw std::runtime_error("Expected variable name after 'let' at line " + std::to_string(varNameTok.line));
     }
     std::string varName = varNameTok.value;
     advance();
-    expect(TokenType::ASSIGN, "Expected '=' after variable name");
+
+    std::string varType = "auto";
+    if (match(TokenType::COLON)) {
+        const Token& typeTok = peek();
+        if (typeTok.type != TokenType::IDENTIFIER && typeTok.type != TokenType::KEYWORD) {
+            throw std::runtime_error("Expected type after ':' at line " + std::to_string(typeTok.line));
+        }
+        advance();
+        varType = typeTok.value;
+    }
+
+    if (peek().value != "=") {
+        throw std::runtime_error("Expected '=' after variable name at line " + std::to_string(peek().line));
+    }
+    advance();
+    
     auto expr = parseExpr();
     expect(TokenType::SEMICOLON, "Expected semicolon ';' after variable declaration");
 
-    return std::make_unique<VariableDeclStmt>(varName, std::move(expr));
+    return std::make_unique<VariableDeclStmt>(varName, varType, std::move(expr));
+
 }
 
 std::unique_ptr<Stmt> Parser::parseStatement() {
@@ -134,12 +160,10 @@ std::unique_ptr<Stmt> Parser::parseStatement() {
     } else if (peek().type == TokenType::KEYWORD && (peek().value == "log" || peek().value == "logln")) {
         bool newline = peek().value == "logln";
         advance();
-
         expect(TokenType::LPAREN, "opening '(' after log/logln");
         auto expr = parseExpr();
         expect(TokenType::RPAREN, "closing ')' after log/logln argument");
         expect(TokenType::SEMICOLON, "semicolon ';' after log/logln");
-
         return std::make_unique<PrintStmt>(std::move(expr), newline);
     } else if (peek().type == TokenType::KEYWORD && peek().value == "loop") {
         return parseLoop();
@@ -154,11 +178,9 @@ std::unique_ptr<Stmt> Parser::parseStatement() {
 
 std::unique_ptr<Expr> Parser::parseBinaryExpr(int minPrecedence) {
     auto left = parsePrimary();
-
     while (true) {
         Token op = peek();
         int precedence = getPrecedence(op);
-
         if (precedence < minPrecedence) break;
 
         advance();
@@ -168,19 +190,16 @@ std::unique_ptr<Expr> Parser::parseBinaryExpr(int minPrecedence) {
 
         auto right = parseBinaryExpr(precedence + 1);
         left = std::make_unique<BinaryExpr>(op.value, std::move(left), std::move(right));
-
     }
-
     return left;
 }
 
 std::unique_ptr<Expr> Parser::parsePrimary() {
     const Token& tok = peek();
-    
+
     if (tok.type == TokenType::NUMBER_LITERAL) {
         advance();
-        return std::make_unique<LiteralExpr>(std::to_string(std::stoi(tok.value)));
-
+        return std::make_unique<LiteralExpr>(tok.value);
     }
 
     if (tok.type == TokenType::STRING_LITERAL) {
@@ -188,36 +207,102 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
         return std::make_unique<LiteralExpr>(tok.value);
     }
 
+    if (tok.type == TokenType::IDENTIFIER) {
+        advance();
+        return std::make_unique<VariableExpr>(tok.value);
+    }
+
     throw std::runtime_error("Unexpected primary expression at line " + std::to_string(tok.line));
 }
 
 std::shared_ptr<Program> Parser::parse() {
     auto program = std::make_shared<Program>();
-    
-    while (peek().type != TokenType::END_OF_FILE) {
-        if (peek().type == TokenType::KEYWORD && peek().value == "function") {
+
+    while (pos < tokens.size()) {
+        if (peek().value == "fnc") {
             program->declarations.push_back(parseFunction());
-        }
-        else {
-            parseStatement();
+        } else {
+            std::cerr << "Parser error: Unexpected token '" << peek().value << "' at line " << peek().line << std::endl;
+            throw std::runtime_error("Parser error");
         }
     }
 
     checkForMain(program);
-
     return program;
 }
 
+
 void Parser::checkForMain(const std::shared_ptr<Program>& program) {
+    bool foundMain = false;
     for (const auto& decl : program->declarations) {
         if (auto funcDecl = std::dynamic_pointer_cast<FunctionDecl>(decl)) {
             if (funcDecl->name == "main") {
-                return;
+                foundMain = true;
+                break;
             }
         }
     }
-    std::cerr << "Error: No main function found." << std::endl;
+    if (!foundMain) {
+        throw std::runtime_error("Where is the programming starting from? No 'main' function found.");
+    }
 }
 
 
+std::unique_ptr<Expr> Parser::parseExpr() {
+    return parseBinaryExpr(0);
+}
 
+std::unique_ptr<Stmt> Parser::parseLoop() {
+    const Token& loopTok = advance(); 
+
+    expect(TokenType::LBRACE, "opening brace '{' after loop");
+
+    std::vector<std::unique_ptr<Stmt>> body;
+    while (!match(TokenType::RBRACE)) {
+        if (peek().type == TokenType::END_OF_FILE) {
+            throw std::runtime_error("Unclosed loop block at line " + std::to_string(loopTok.line));
+        }
+        body.push_back(parseStatement());
+    }
+
+    return std::make_unique<LoopStmt>(std::move(body));
+}
+
+
+std::unique_ptr<Stmt> Parser::parseIfStmt() {
+    const Token& ifTok = advance();
+    
+    expect(TokenType::LPAREN, "'(' after 'if'");
+    auto cond = parseExpr(); 
+    expect(TokenType::RPAREN, "')' after condition");
+    
+    expect(TokenType::LBRACE, "'{' after condition block"); 
+    std::vector<std::unique_ptr<Stmt>> trueBranch;
+    while (!match(TokenType::RBRACE)) {
+        if (peek().type == TokenType::END_OF_FILE) {
+            throw std::runtime_error("Unclosed 'if' block at line " + std::to_string(ifTok.line));
+        }
+        trueBranch.push_back(parseStatement());
+    }
+
+    std::vector<std::unique_ptr<Stmt>> falseBranch;
+    if (match(TokenType::KEYWORD, "else")) {
+        expect(TokenType::LBRACE, "'{' after 'else'");
+
+        while (!match(TokenType::RBRACE)) {
+            if (peek().type == TokenType::END_OF_FILE) {
+                throw std::runtime_error("Unclosed 'else' block at line " + std::to_string(ifTok.line));
+            }
+            falseBranch.push_back(parseStatement());
+        }
+    }
+
+    return std::make_unique<IfStmt>(std::move(cond), std::move(trueBranch), std::move(falseBranch));
+}
+
+
+int Parser::getPrecedence(const Token& token) {
+    if (token.value == "+" || token.value == "-") return 1;
+    if (token.value == "*" || token.value == "/") return 2;
+    return -1;
+}
