@@ -34,8 +34,23 @@ bool Lexer::isAlnum(char c) const {
 void Lexer::skipWhitespace() {
     while (std::isspace(peek())) advance();
 }
+char Lexer::currentChar() const {
+    return source[current];
+}
+
+char Lexer::peekNext() const {
+    if (current + 1 >= source.size()) return '\0';  
+    return source[current + 1];
+}
+
+bool Lexer::isAtEnd() const {
+    return current >= source.size();  
+}
 
 Token Lexer::identifier() {
+    size_t start = current;
+
+    std::string text = source.substr(start, current - start);
     std::string value;
     while (isAlnum(peek())) value += get();
 
@@ -47,8 +62,12 @@ Token Lexer::identifier() {
     if (value == "string" || value == "int") {
         return {TokenType::KEYWORD, value, value, line};
     }
+    if (text == "if") return {TokenType::IF, text, "", line};
+    if (text == "else") return {TokenType::ELSE, text, "", line};
 
     return {TokenType::IDENTIFIER, value, "", line};
+
+
 }
 
 Token Lexer::stringLiteral() {
@@ -87,6 +106,25 @@ std::vector<Token> Lexer::tokenize() {
         skipWhitespace();
         char c = peek();
         if (c == '\0') break;
+        if (current == '/' && peekNext() == '/') {
+            while (currentChar() != '\n' && !isAtEnd()) advance();
+            continue;
+        }
+        
+        
+        if (current == '/' && peekNext() == '*') {
+            advance();
+            advance(); 
+            while (!isAtEnd() && !(currentChar() == '*' && peekNext() == '/')) {
+                advance();
+            }
+            if (!isAtEnd()) {
+                advance(); 
+                advance(); 
+            }
+            continue;
+        }
+        
 
         if (isAlpha(c)) {
             tokens.push_back(identifier());
@@ -138,3 +176,4 @@ std::vector<Token> Lexer::tokenize() {
     tokens.push_back({TokenType::END_OF_FILE, "", "", line});
     return tokens;
 }
+

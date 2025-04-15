@@ -15,6 +15,11 @@ public:
 };
 void printAST(const std::shared_ptr<Program>& program);
 
-
+class FunctionCallExpr : public Expr {
+    public:
+        std::string name;
+        std::vector<std::shared_ptr<Expr>> args;
+    };
+    
 #endif // WYZER_AST_PRINTER_HPP
 

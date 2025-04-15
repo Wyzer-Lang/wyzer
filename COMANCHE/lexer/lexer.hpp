@@ -13,6 +13,20 @@ enum class TokenType {
     COLON,
     SEMICOLON,
     ARROW,
+    IF,
+    ELSE,
+    MINUS,
+    SLASH,
+    NEQ,
+    LTEQ,
+    GTEQ,
+    OR,
+    EQ,
+    LT,
+    GT,
+    AND,
+    STAR,
+    ASSIGN,
     LPAREN,
     RPAREN,
     LBRACE,
@@ -30,10 +44,16 @@ struct Token {
     int line;
 };
 
+
+
+
 class Lexer {
 public:
     explicit Lexer(const std::string& src);
     std::vector<Token> tokenize();
+    char currentChar() const;
+    char peekNext() const;
+    bool isAtEnd() const;
 
 private:
     char peek() const;
@@ -48,8 +68,11 @@ private:
     Token numberLiteral();
 
     std::string source;
+    size_t current = 0;
     size_t pos = 0;
+    
     int line = 1;
+
 };
 
 #endif // WYZER_LEXER_H

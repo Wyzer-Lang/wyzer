@@ -5,6 +5,7 @@
 #include <vector>
 #include <memory>
 #include <optional>
+#include <iostream>
 
 
 struct ASTNode {
@@ -76,37 +77,55 @@ struct FunctionDecl : public ASTNode {
     FunctionDecl(std::string n, std::vector<Param> p, std::string r, std::vector<std::unique_ptr<Stmt>> b)
         : name(std::move(n)), params(std::move(p)), returnType(std::move(r)), body(std::move(b)) {}
 };
+struct IfStmt : Stmt {
+    std::unique_ptr<Expr> condition;
+    std::vector<std::unique_ptr<Stmt>> thenBranch;
+    std::vector<std::unique_ptr<Stmt>> elseBranch;
+
+    IfStmt(std::unique_ptr<Expr> cond,
+           std::vector<std::unique_ptr<Stmt>> thenB,
+           std::vector<std::unique_ptr<Stmt>> elseB)
+        : condition(std::move(cond)), thenBranch(std::move(thenB)), elseBranch(std::move(elseB)) {}
+};
+
+struct VariableDeclStmt : Stmt {
+    std::string name;
+    std::unique_ptr<Expr> expr;
+
+    VariableDeclStmt(std::string name, std::unique_ptr<Expr> expr)
+        : name(std::move(name)), expr(std::move(expr)) {}
+};
 
 
 class Parser {
-public:
-    explicit Parser(std::vector<Token> toks);
-
-    std::unique_ptr<FunctionDecl> parseFunction();
-    std::shared_ptr<Program> parse();
-    std::unique_ptr<Stmt> parseLoop();
-    std::unique_ptr<Stmt> parseStatement();
-
-
-private:
-    Token peek() const;
-    const Token& advance();
-    Token get();
-    bool match(TokenType type);
-    bool match(TokenType type, const std::string& subType);
-    void expect(TokenType type, const std::string& message);
-    void expect(TokenType type, const std::string& subType, const std::string& message);
-
-    std::unique_ptr<Expr> parseExpr();
-    std::unique_ptr<Expr> parsePrimary();
-    std::unique_ptr<Expr> parseBinaryRHS(int precedence, std::unique_ptr<Expr> lhs);
-    std::unique_ptr<Expr> parseBinaryExpr(int minPrecedence);
-    int getPrecedence(const Token& tok);
-    std::shared_ptr<ASTNode> parseDeclaration();
-    void checkForMain(const std::shared_ptr<Program>& program);
-
-    std::vector<Token> tokens;
-    size_t pos;
-};
+    public:
+        explicit Parser(std::vector<Token> toks);
+        std::unique_ptr<FunctionDecl> parseFunction();
+        std::unique_ptr<Stmt> parseStatement();
+        std::shared_ptr<Program> parse();
+        void consume(TokenType type, const std::string& errorMessage);
+        std::unique_ptr<Expr> parseExpr();
+        std::vector<std::unique_ptr<Stmt>> parseBlock();
+        std::unique_ptr<Stmt> parseVariableDecl();
+    
+    private:
+        std::vector<Token> tokens;
+        size_t pos;
+    
+        Token peek() const;
+        const Token& advance();
+        Token get();
+        bool match(TokenType type);
+        bool match(TokenType type, const std::string& subType);
+        void expect(TokenType type, const std::string& message);
+        void expect(TokenType type, const std::string& subType, const std::string& message);
+        std::unique_ptr<Expr> parseBinaryExpr(int minPrecedence);
+        std::unique_ptr<Expr> parsePrimary();
+        int getPrecedence(const Token& tok);
+        std::unique_ptr<Stmt> parseIfStmt();
+        std::unique_ptr<Stmt> parseLoop();
+        void checkForMain(const std::shared_ptr<Program>& program);
+    };
+    
 
 #endif // WYZER_PARSER_HPP

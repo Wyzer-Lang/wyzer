@@ -50,7 +50,7 @@ void Parser::expect(TokenType type, const std::string& subType, const std::strin
 }
 
 std::unique_ptr<FunctionDecl> Parser::parseFunction() {
-    const Token& funcTok = advance();  
+    const Token& funcTok = advance();
     expect(TokenType::IDENTIFIER, "function name");
 
     std::string funcName = tokens[pos - 1].value;
@@ -83,16 +83,15 @@ std::unique_ptr<FunctionDecl> Parser::parseFunction() {
         }
     }
 
-std::string returnType = "void";
+    std::string returnType = "void";
 
-if (match(TokenType::ARROW)) {
-    if (peek().type != TokenType::IDENTIFIER && peek().type != TokenType::KEYWORD) {
-        throw std::runtime_error("Expected return type after '->' at line " + std::to_string(peek().line));
+    if (match(TokenType::ARROW)) {
+        if (peek().type != TokenType::IDENTIFIER && peek().type != TokenType::KEYWORD) {
+            throw std::runtime_error("Expected return type after '->' at line " + std::to_string(peek().line));
+        }
+        advance();
+        returnType = tokens[pos - 1].value;
     }
-    advance();
-    returnType = tokens[pos - 1].value;
-}
-
 
     expect(TokenType::LBRACE, "function body '{'");
 
@@ -102,6 +101,35 @@ if (match(TokenType::ARROW)) {
     }
 
     return std::make_unique<FunctionDecl>(funcName, params, returnType, std::move(body));
+}
+
+void Parser::consume(TokenType type, const std::string& errorMessage) {
+    if (!match(type)) {
+        throw std::runtime_error(errorMessage);
+    }
+}
+
+std::unique_ptr<Stmt> Parser::parseVariableDecl() {
+    //expect(TokenType::KEYWORD, "let");
+
+    // Parse variable name
+    const Token& varNameTok = peek();
+    if (varNameTok.type != TokenType::IDENTIFIER) {
+        throw std::runtime_error("Expected variable name after 'let' at line " + std::to_string(varNameTok.line));
+    }
+    std::string varName = varNameTok.value;
+    advance();
+
+    // Expect assignment token
+    expect(TokenType::ASSIGN, "Expected '=' after variable name");
+
+    // Parse the expression being assigned
+    auto expr = parseExpr();
+
+    // Expect semicolon
+    expect(TokenType::SEMICOLON, "Expected semicolon ';' after variable declaration");
+
+    return std::make_unique<VariableDeclStmt>(varName, std::move(expr));
 }
 
 std::unique_ptr<Stmt> Parser::parseStatement() {
@@ -121,6 +149,10 @@ std::unique_ptr<Stmt> Parser::parseStatement() {
         return std::make_unique<PrintStmt>(std::move(expr), newline);
     } else if (peek().type == TokenType::KEYWORD && peek().value == "loop") {
         return parseLoop();
+    } else if (match(TokenType::KEYWORD, "let")) {
+        return parseVariableDecl();
+    } else if (peek().type == TokenType::IF) {
+        return parseIfStmt();
     }
 
     throw std::runtime_error("Unexpected token '" + peek().value + "' at line " + std::to_string(peek().line));
@@ -137,75 +169,61 @@ std::unique_ptr<Expr> Parser::parseBinaryExpr(int minPrecedence) {
 
         advance();
 
-        
         Token next = peek();
-        if (next.type == TokenType::SEMICOLON || next.type == TokenType::RBRACE || next.type == TokenType::END_OF_FILE) {
-            throw std::runtime_error("Expected expression after '" + op.value + "' at line " + std::to_string(op.line));
-        }
+        if (next.type == TokenType::SEMICOLON || next.type == TokenType::RBRACE || next.type == TokenType::END_OF_FILE) break;
 
         auto right = parseBinaryExpr(precedence + 1);
         left = std::make_unique<BinaryExpr>(op.value, std::move(left), std::move(right));
+
     }
 
     return left;
 }
 
-
-std::unique_ptr<Expr> Parser::parseExpr() {
-    return parseBinaryExpr(0);
-}
-
-int Parser::getPrecedence(const Token& tok) {
-    if (tok.type == TokenType::PLUS || (tok.type == TokenType::SYMBOL && tok.value == "+")) return 10;
-    return -1;
-}
-
 std::unique_ptr<Expr> Parser::parsePrimary() {
-    const Token& tok = advance();
-    if (tok.type == TokenType::NUMBER_LITERAL || tok.type == TokenType::STRING_LITERAL) {
-        return std::make_unique<LiteralExpr>(tok.value);
-    } else if (tok.type == TokenType::IDENTIFIER) {
-        return std::make_unique<VariableExpr>(tok.value);
+    const Token& tok = peek();
+    
+    if (tok.type == TokenType::NUMBER_LITERAL) {
+        advance();
+        return std::make_unique<LiteralExpr>(std::to_string(std::stoi(tok.value)));
+
     }
 
-    throw std::runtime_error("Unexpected token '" + tok.value + "' at line " + std::to_string(tok.line));
+    if (tok.type == TokenType::STRING_LITERAL) {
+        advance();
+        return std::make_unique<LiteralExpr>(tok.value);
+    }
+
+    throw std::runtime_error("Unexpected primary expression at line " + std::to_string(tok.line));
 }
 
 std::shared_ptr<Program> Parser::parse() {
     auto program = std::make_shared<Program>();
-
+    
     while (peek().type != TokenType::END_OF_FILE) {
-        program->declarations.push_back(parseFunction());
+        if (peek().type == TokenType::KEYWORD && peek().value == "function") {
+            program->declarations.push_back(parseFunction());
+        }
+        else {
+            parseStatement();
+        }
     }
-    std::cout << "DEBUG: Finished parsing functions, now checking for main()\n";
+
     checkForMain(program);
+
     return program;
 }
 
-std::unique_ptr<Stmt> Parser::parseLoop() {
-    expect(TokenType::KEYWORD, "loop", "Expected 'loop'");
-
-    expect(TokenType::LBRACE, "Expected '{' after 'loop'");
-
-    std::vector<std::unique_ptr<Stmt>> body;
-    while (!match(TokenType::RBRACE)) {
-        body.push_back(parseStatement());
-    }
-
-    return std::make_unique<LoopStmt>(std::move(body));
-}
-
 void Parser::checkForMain(const std::shared_ptr<Program>& program) {
-    std::cout << "DEBUG: Checking for main()\n";
     for (const auto& decl : program->declarations) {
-        if (auto fn = dynamic_cast<FunctionDecl*>(decl.get())) {
-            std::cout << "DEBUG: Found function: " << fn->name << "\n";
-            if (fn->name == "main") return;
+        if (auto funcDecl = std::dynamic_pointer_cast<FunctionDecl>(decl)) {
+            if (funcDecl->name == "main") {
+                return;
+            }
         }
     }
-    throw std::runtime_error("Where is the programming starting from? I did not see any main() in here bro/sis. Do you have a brain? If you have one then use it as god gave it to you, they say 'If nature did not make it , then dont take it'. Error: No main() function found.");
-
+    std::cerr << "Error: No main function found." << std::endl;
 }
 
 
-    
+

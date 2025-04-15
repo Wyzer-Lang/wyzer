@@ -1,6 +1,9 @@
-fnc main(a:int , b:int) -> int {
-
-        logln("Sum of 1 + 1");
-        logln(1 + 1);
-    
+fnc main() -> void {
+    logln(10 % 3);  
+    logln(10 == 10);  
+    logln(10 != 5);   
+    logln(5 < 10); 
+    logln(15 > 10);  
+    logln(5 <= 10);   
+    logln(15 >= 10);  
 }
