@@ -112,21 +112,15 @@ void Parser::consume(TokenType type, const std::string& errorMessage) {
 std::unique_ptr<Stmt> Parser::parseVariableDecl() {
     //expect(TokenType::KEYWORD, "let");
 
-    // Parse variable name
+    
     const Token& varNameTok = peek();
     if (varNameTok.type != TokenType::IDENTIFIER) {
         throw std::runtime_error("Expected variable name after 'let' at line " + std::to_string(varNameTok.line));
     }
     std::string varName = varNameTok.value;
     advance();
-
-    // Expect assignment token
     expect(TokenType::ASSIGN, "Expected '=' after variable name");
-
-    // Parse the expression being assigned
     auto expr = parseExpr();
-
-    // Expect semicolon
     expect(TokenType::SEMICOLON, "Expected semicolon ';' after variable declaration");
 
     return std::make_unique<VariableDeclStmt>(varName, std::move(expr));
