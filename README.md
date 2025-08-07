@@ -12,7 +12,7 @@ Wyzer is a General purpose, statically typed programming language with no runtim
 ## Motive behind Wyzer
 Modern systems languages suffer from two extremes:
 take C++ it's basically a swamp of legacy, inconsistent idioms, and accidental complexity
-lets also take Rust which over-engineers simplicity into submission, burying clarity under lifetime puzzles and trait gymnastics
+lets also take Rust which often makes simple ideas harder with complex trait rules and lifetimes
 
 and Wyzer refuses both paths 
 
