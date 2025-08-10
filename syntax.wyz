@@ -1,0 +1,168 @@
+// ===== Imports and Aliases =====
+use std::io;
+use package::stuff as something;
+use std::math::{
+    cos,
+    sin,
+    add as ad
+};
+
+
+// - // single-line comment
+// - /* block comment */
+
+
+// ===== Variables =====
+let x = 9;           // Immutable variable (type inferred as int)
+var y = x;           // Mutable variable
+const pi = 3.14;     // Compile-time constant
+
+// primitive types (built-in):
+// int    - for integers
+// float  - for floating point numbers
+// bool   - true / false
+// char   - single character
+// string - sequence of characters
+
+
+
+// ===== function Declarations =====
+pub fn add() {
+    return x + y;   // Arithmetic operator +
+}
+
+// these arithmetic operators:
+// -      subtraction
+// *      multiplication
+// /      division
+// %      modulo
+// **     power
+
+// bitwise operators:
+// &      AND
+// |      OR
+// ^      XOR
+// <<     left shift
+// >>     right shift
+// ~      NOT (bitwise)
+
+// logical operators:
+// &&     logical AND
+// ||     logical OR
+// !      logical NOT
+
+// comparison operators:
+// ==     equality
+// !=     not equal
+// <      less than
+// >      greater than
+// <=     less than or equal
+// >=     greater than or equal
+
+
+// ===== Control Flow Example =====
+fn fib(n: int): int {
+    if n >= 1 {
+        return n;
+    } else {
+        return 0;
+    }
+}
+
+let i = 1;
+// Range based for loop
+for i in 1..9 {
+   io::writen("hello world");
+};
+
+for i in 1..<9 {
+   io::writen("hello world");
+};
+
+
+// this also works btw
+for i in 1..=9 {
+   io::writen("hello world");
+};
+
+
+
+// for loop
+
+for i = 10; i <10; i++ {
+    io::writen("Hello world");
+};
+
+
+// Structs, classes , enums
+
+struct Person {
+    x: i64,
+    y: i16,
+    z: i128,
+}
+
+// Struct tupling
+
+struct Person {
+    name: string,
+    age: (int, string)
+}
+
+let p = Person {
+    name: "Ravi",
+    age: (14, "years")
+}
+
+
+// calling from the values set
+
+
+io::writen(p.age.0, p.age.1); // writes 14 years
+
+// Enums
+
+enum Result {
+    Ok(value: int),
+    Err(msg: string)
+}
+
+fn handle(r: Result) {
+    if r is Ok {
+        io::write("Success: {}", r.value);
+    } else if r is Error {
+        io::write("Error: {}", r.msg);
+    }
+}
+
+// impl
+
+struct Point {
+    x: int,
+    y: int
+}
+
+impl Point {
+    fn distance_from_origin(): float {
+        return math::sqrt(self.x * self.x + self.y * self.y);
+    }
+}
+
+
+// ===== Entry Point =====
+fn main() {
+
+    io::writen("hello");
+    io::write("world");
+    io::writen("sum of the numbers: {}", add());
+    something::something()
+}
+
+// Later features to add:
+// - if-else expressions (not just statements)
+// - match or switch statement (v0.1.2)
+// - ternary operator
+// - while loops (v0.1.1)
+// - for loops (v0.1.1)
+// - break / continue
+
