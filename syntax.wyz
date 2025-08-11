@@ -1,7 +1,7 @@
 // ===== Imports and Aliases =====
-use std.io;
-use package.stuff as something;
-use std.math.{
+using std.io;
+using package.stuff as something;
+using std.math.{
     cos,
     sin,
     add as ad
