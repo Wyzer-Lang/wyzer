@@ -118,8 +118,6 @@ let p = Person {
 
 
 // calling from the values set
-
-
 io::writen(p.age.0, p.age.1); // writes 14 years
 
 // Enums
@@ -159,6 +157,17 @@ fn main() {
     io.writen("sum of the numbers: {}", add());
     something.something()
 }
+
+
+// inline asm 
+
+let a = asm {
+    mov edx,len
+    mov rax, 20
+    ret
+}
+
+
 
 // Later features to add:
 // - if-else expressions (not just statements)
