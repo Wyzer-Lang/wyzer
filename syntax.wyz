@@ -64,7 +64,9 @@ pub fn add() {
 fn fib(n: int): int {
     if n >= 1 {
         return n;
-    } else {
+    } elif n == 1 {
+        return n;
+    else {
         return 0;
     }
 }
