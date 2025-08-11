@@ -1,7 +1,7 @@
 // ===== Imports and Aliases =====
-use std::io;
-use package::stuff as something;
-use std::math::{
+use std.io;
+use package.stuff as something;
+use std.math.{
     cos,
     sin,
     add as ad
@@ -72,17 +72,17 @@ fn fib(n: int): int {
 let i = 1;
 // Range based for loop
 for i in 1..9 {
-   io::writen("hello world");
+   io.writen("hello world");
 };
 
 for i in 1..<9 {
-   io::writen("hello world");
+   io.writen("hello world");
 };
 
 
 // this also works btw
 for i in 1..=9 {
-   io::writen("hello world");
+   io.writen("hello world");
 };
 
 
@@ -90,7 +90,7 @@ for i in 1..=9 {
 // for loop
 
 for i = 10; i <10; i++ {
-    io::writen("Hello world");
+    io.writen("Hello world");
 };
 
 
@@ -129,9 +129,9 @@ enum Result {
 
 fn handle(r: Result) {
     if r is Ok {
-        io::write("Success: {}", r.value);
+        io.write("Success: {}", r.value);
     } else if r is Error {
-        io::write("Error: {}", r.msg);
+        io.write("Error: {}", r.msg);
     }
 }
 
@@ -144,7 +144,7 @@ struct Point {
 
 impl Point {
     fn distance_from_origin(): float {
-        return math::sqrt(self.x * self.x + self.y * self.y);
+        return math.sqrt(self.x * self.x + self.y * self.y);
     }
 }
 
@@ -152,10 +152,10 @@ impl Point {
 // ===== Entry Point =====
 fn main() {
 
-    io::writen("hello");
-    io::write("world");
-    io::writen("sum of the numbers: {}", add());
-    something::something()
+    io.writen("hello");
+    io.write("world");
+    io.writen("sum of the numbers: {}", add());
+    something.something()
 }
 
 // Later features to add:
