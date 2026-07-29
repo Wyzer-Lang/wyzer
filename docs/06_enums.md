@@ -33,3 +33,30 @@ enum Flags: u8 (1 << iota) {
 ```
 
 This exposes exactly how your data is represented underneath. The compiler calculates all the math before your program even runs, so it is extremely fast.
+
+## Special Overrides
+
+Sometimes, you need to break the pattern. Wyzer gives you two special tools for this so you don't mess up your counting:
+
+1. **The Iota Override (`@=`)**: This lets you jump the `iota` counter to a brand new number. The sequence will continue counting from this new number.
+2. **The Value Override (`$=`)**: This lets you hardcode the final value of a choice, completely ignoring the math! The `iota` counter silently counts up in the background so the next choice in the sequence isn't broken.
+
+Here is an example of both in action:
+
+```wyzer
+enum Flags: u8 (1 << iota) {
+   Read,          // iota=0, math: 1<<0 = 1
+   Write,         // iota=1, math: 1<<1 = 2
+   
+   // We want Error to be 0, but we don't want to break the sequence!
+   Error $= 0,    // Value Override: math is ignored! value is 0. (iota is still 2)
+   
+   Execute,       // iota=3, math: 1<<3 = 8 (The sequence resumes perfectly!)
+   
+   // We want to jump far ahead!
+   Custom @= 5,   // Iota Override: iota jumps to 5. math: 1<<5 = 32
+   Next           // iota=6, math: 1<<6 = 64
+}
+```
+
+This ensures there is never any confusion between what the counter is doing and what the final value is!

@@ -14,7 +14,7 @@ enum Baz: u32 (iota * 2) {
   Var1, // 0
   Var2, // 2
   Var3, // 4
-  Var4 = 12, // 24
+  Var4 @= 12, // 24
   Var5, // 26
   Var6  // 28
 }

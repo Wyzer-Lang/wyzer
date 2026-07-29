@@ -1,0 +1,19 @@
+enum Flags: u8 (1 << iota) {
+   Read,          // iota=0, val=1
+   Write,         // iota=1, val=2
+   Error $= (iota * 10),  // Value Override: iota=2 (ignored), val=20
+   Execute,               // iota=3 (resumed!), val=8
+   Custom @= (iota + 2),  // Iota Override: iota=4+2=6, val=64
+   Next                   // iota=7, val=128
+}
+
+fn main() -> u32 {
+    std::io::println(Flags::Read);
+    std::io::println(Flags::Write);
+    std::io::println(Flags::Error);
+    std::io::println(Flags::Execute);
+    std::io::println(Flags::Custom);
+    std::io::println(Flags::Next);
+    
+    return 0;
+}

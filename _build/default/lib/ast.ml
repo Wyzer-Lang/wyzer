@@ -81,10 +81,15 @@ type fn_decl = {
 }
 [@@deriving show, eq]
 
+type override_kind =
+  | IotaOverride
+  | ValueOverride
+[@@deriving show, eq]
+
 type enum_member = {
   name: string;
-  explicit_val: expr option;
-  computed_val: Int64.t option ref;
+  override: (override_kind * expr) option;
+  computed_val: int64 option ref;
 }
 [@@deriving show, eq]
 

@@ -69,6 +69,8 @@ rule read = parse
   | "." { DOT }
   | "::" { COLONCOLON }
   | "@" { AT }
+  | "@=" { AT_EQ }
+  | "$=" { DOLLAR_EQ }
   | digit+ as n { INT (Int64.of_string n) }
   | '"' { read_string (Buffer.create 17) lexbuf }
   | ident as id { IDENT id }

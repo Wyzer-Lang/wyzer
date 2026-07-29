@@ -150,8 +150,12 @@ let rec check_expr env e expected_typ_opt =
       ) else
         raise (TypeError ("Undefined path call: " ^ String.concat "::" resolved_path))
   | EBinOp (e1, op, e2) ->
-      let t1, env1 = check_expr env e1 None in
-      let t2, env2 = check_expr env1 e2 None in
+      let expected_e1 = match op with
+        | Add | Sub | Mul | Div | Shl | Shr | BitAnd | BitOr -> expected_typ_opt
+        | Eq | Neq | Lt | Gt | Lte | Gte -> None
+      in
+      let t1, env1 = check_expr env e1 expected_e1 in
+      let t2, env2 = check_expr env1 e2 (Some t1) in
       if not (types_compatible t1 t2) then raise (TypeError "Binary operator operands must have compatible types");
       (match op with
       | Add | Sub | Mul | Div | Shl | Shr | BitAnd | BitOr ->
@@ -394,17 +398,22 @@ let check_item env item =
   | IFn f -> check_fn_decl env f
   | IEnum e ->
       let iota_env = { env with vars = StringMap.add "iota" (TBase TU64, false, Live) env.vars } in
-      let _, _ = check_expr iota_env e.iota_expr None in
+      let _, _ = check_expr iota_env e.iota_expr (Some (TBase TU64)) in
       let current_iota = ref 0L in
       List.iter (fun (m: Ast.enum_member) ->
-        (match m.explicit_val with
-        | Some exp_val ->
-            let _, _ = check_expr iota_env exp_val None in
-            current_iota := eval_const None exp_val
-        | None -> ());
-        let computed = eval_const (Some !current_iota) e.iota_expr in
-        current_iota := Int64.add !current_iota 1L;
-        m.computed_val := Some computed
+        let computed = match m.override with
+        | Some (IotaOverride, exp_val) ->
+            let _, _ = check_expr iota_env exp_val (Some (TBase TU64)) in
+            current_iota := eval_const (Some !current_iota) exp_val;
+            eval_const (Some !current_iota) e.iota_expr
+        | Some (ValueOverride, exp_val) ->
+            let _, _ = check_expr iota_env exp_val (Some (TBase e.base_typ)) in
+            eval_const (Some !current_iota) exp_val
+        | None ->
+            eval_const (Some !current_iota) e.iota_expr
+        in
+        m.computed_val := Some computed;
+        current_iota := Int64.add !current_iota 1L
       ) e.members;
       { env with enums = StringMap.add e.name e env.enums }
   | IStruct s ->

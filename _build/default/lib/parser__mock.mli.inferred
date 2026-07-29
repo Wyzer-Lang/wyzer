@@ -55,6 +55,7 @@ type token =
   | ENUM
   | ELSE
   | DOT
+  | DOLLAR_EQ
   | CONST
   | COMMA
   | COLONCOLON
@@ -63,6 +64,7 @@ type token =
   | BOOL
   | BITOR
   | BITAND
+  | AT_EQ
   | AT
   | AS
 val menhir_begin_marker : int
@@ -85,17 +87,18 @@ val xv_separated_list_COMMA_enum_member_ : Ast.enum_member list
 val xv_program : Ast.program
 val xv_pattern : Ast.pattern
 val xv_param : Ast.param
+val xv_override : Ast.override_kind * Ast.expr
+val xv_option_override_ : (Ast.override_kind * Ast.expr) option
 val xv_option_int_suffix_ : Ast.base_type option
 val xv_option_expr_ : Ast.expr option
 val xv_option___anonymous_9_ : Ast.block option
-val xv_option___anonymous_8_ : Ast.typ option
+val xv_option___anonymous_8_ : Ast.block option
 val xv_option___anonymous_7_ : Ast.typ option
 val xv_option___anonymous_6_ : Ast.typ option
-val xv_option___anonymous_5_ : Ast.expr option
+val xv_option___anonymous_5_ : Ast.typ option
 val xv_option___anonymous_4_ : Ast.typ option
 val xv_option___anonymous_3_ : string option
 val xv_option___anonymous_2_ : Ast.typ option
-val xv_option___anonymous_10_ : Ast.block option
 val xv_option___anonymous_1_ : string option
 val xv_option___anonymous_0_ : string option
 val xv_nonempty_list_match_arm_ : (Ast.pattern * Ast.expr) list
@@ -126,14 +129,13 @@ val xv_block_stmts : Ast.block
 val xv_block : Ast.block
 val xv_base_type : Ast.base_type
 val xv___anonymous_9 : Ast.block
-val xv___anonymous_8 : Ast.typ
+val xv___anonymous_8 : Ast.block
 val xv___anonymous_7 : Ast.typ
 val xv___anonymous_6 : Ast.typ
-val xv___anonymous_5 : Ast.expr
+val xv___anonymous_5 : Ast.typ
 val xv___anonymous_4 : Ast.typ
 val xv___anonymous_3 : string
 val xv___anonymous_2 : Ast.typ
-val xv___anonymous_10 : Ast.block
 val xv___anonymous_1 : string
 val xv___anonymous_0 : string
 val menhir_end_marker : int

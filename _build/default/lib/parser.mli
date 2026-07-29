@@ -58,6 +58,7 @@ type token =
   | ENUM
   | ELSE
   | DOT
+  | DOLLAR_EQ
   | CONST
   | COMMA
   | COLONCOLON
@@ -66,6 +67,7 @@ type token =
   | BOOL
   | BITOR
   | BITAND
+  | AT_EQ
   | AT
   | AS
 

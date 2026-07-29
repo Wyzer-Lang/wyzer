@@ -11,8 +11,10 @@ open Ast
 %token U8 U16 U32 U64 I8 I16 I32 I64 BOOL STR
 %token PLUS MINUS STAR SLASH SHL SHR BITAND BITOR
 %token EQEQ NEQ LT GT LTE GTE EQ FATARROW
-%token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA COLON SEMICOLON DOT COLONCOLON AT
+%token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA COLON SEMICOLON DOT COLONCOLON AT AT_EQ DOLLAR_EQ
 %token EOF
+
+%type <Ast.override_kind * Ast.expr> override
 
 %left BITOR
 %left BITAND
@@ -76,8 +78,12 @@ enum_decl:
   | ENUM name=IDENT COLON base_typ=base_type LPAREN iota_expr=expr RPAREN LBRACE members=separated_list(COMMA, enum_member) RBRACE
     { { name; base_typ; iota_expr; members } }
 
+override:
+  | AT_EQ e=expr { (Ast.IotaOverride, e) }
+  | DOLLAR_EQ e=expr { (Ast.ValueOverride, e) }
+
 enum_member:
-  | name=IDENT explicit_val=option(EQ e=expr {e}) { { name; explicit_val; computed_val = ref None } }
+  | name=IDENT ov=option(override) { { name; override = ov; computed_val = ref None } }
 
 block:
   | LBRACE RBRACE { { stmts = []; ret_expr = None } }
