@@ -5,8 +5,8 @@ Wyzer is strongly typed. You must always tell the compiler exactly what type of 
 ## How to Change Variables
 
 Wyzer makes you think about when data changes.
-1. `let` : Creates a normal variable. You cannot change it later.
-2. `var` : Creates a changeable variable.
+1. `let` : Creates a normal variable. You cannot change it later. (immutable variable)
+2. `var` : Creates a mutable variable
 3. `const` : Creates a fixed constant. This is evaluated before the program runs.
 
 ```wyzer
