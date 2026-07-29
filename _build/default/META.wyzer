@@ -1,0 +1,9 @@
+package "lib" (
+  directory = "lib"
+  description = ""
+  requires = "ppx_deriving.runtime ppx_deriving.std"
+  archive(byte) = "wyzer_lib.cma"
+  archive(native) = "wyzer_lib.cmxa"
+  plugin(byte) = "wyzer_lib.cma"
+  plugin(native) = "wyzer_lib.cmxs"
+)

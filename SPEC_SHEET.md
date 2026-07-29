@@ -46,7 +46,7 @@ item        ::= fn_decl | enum_decl | type_decl
 import_decl ::= "import" module_path ("as" ident)? ";"
 module_path ::= ident ("::" ident)*        (* e.g. std::io *)
 
-fn_decl     ::= "fn" ident "(" param_list? ")" "->" type block
+fn_decl     ::= "fn" ident "(" param_list? ")" ("->" type)? block
 param_list  ::= param ("," param)*
 param       ::= ident ":" type
 
@@ -62,9 +62,9 @@ base_type   ::= "u8" | "u16" | "u32" | "u64"
 role        ::= ident
 
 block       ::= "{" stmt* expr? "}"
-stmt        ::= let_stmt | assign_stmt | expr ";" | if_stmt | while_stmt | for_stmt
-let_stmt    ::= "let" "mut"? ident (":" type)? "=" expr ";"
-assign_stmt ::= ident "=" expr ";"          (* only allowed if defined with `let mut` *)
+stmt        ::= decl_stmt | assign_stmt | expr ";" | if_stmt | while_stmt | for_stmt
+decl_stmt   ::= ("let" | "var" | "const") ident (":" type)? "=" expr ";"
+assign_stmt ::= ident "=" expr ";"          (* only allowed if defined with `var` *)
 
 if_stmt     ::= "if" expr block ("else" (if_stmt | block))?
 while_stmt  ::= "while" expr block
@@ -347,7 +347,7 @@ Calling `P::f(args)` checks the types just like a normal function. The only diff
 
 ### 10.3 Open Question **[OPEN]**
 
-We do not know yet if role types like `τ@ρ` can be shared between modules. This is marked for Section 16.
+We do not know yet if role types like `τ@ρ` can be shared between modules. This is marked for Section 18.
 
 ---
 
@@ -404,13 +404,14 @@ Loops cause a big problem for resources. A loop body cannot use a linear resourc
 
 ### 13.1 Design
 
-Variables made with `let` cannot be changed. You must use `let mut` if you want to change them later.
+Variables made with `let` cannot be changed. You must use `var` if you want to change them later. For compile-time constants, use `const`.
 
 ```
-let x: u32 = 5;        // immutable
-let mut y: u32 = 0;    // mutable
-y = y + 1;              // legal — y was declared `mut`
-x = 6;                  // compile error — x was not declared `mut`
+let x: u32 = 5u32;     // immutable
+var y: u32 = 0u32;     // mutable
+const MAX: u32 = 100u32;
+y = y + 1u32;          // legal — y was declared `var`
+x = 6u32;              // compile error — x was declared `let`
 ```
 
 ### 13.2 Mixing Variables and Resources **[OPEN]**
@@ -452,19 +453,82 @@ We plan to use green threads. Each thread acts as a basic participant (Section 7
 
 ---
 
-## 16. Summary of Open Tasks
+## 16. Structs and Composite Types **[DRAFT]**
+
+### 16.1 Grammar
+
+The `type_decl` rule from Section 2 is defined here:
+
+```ebnf
+type_decl   ::= "struct" ident "{" field_list? "}"
+field_list  ::= field ("," field)*
+field       ::= ident ":" type
+```
+
+```
+struct Point {
+    x: u32,
+    y: u32,
+}
+```
+
+Creating a struct and accessing fields are normal expressions, added to Section 2:
+
+```ebnf
+expr        ::= ... | struct_lit | field_access
+struct_lit  ::= ident "{" field_init_list? "}"
+field_init_list ::= field_init ("," field_init)*
+field_init  ::= ident ":" expr
+field_access ::= expr "." ident
+```
+
+### 16.2 Typing
+
+```
+   Γ ⊢ e1 : τ1 ⊣ Γ1   ...   Γ_{n-1} ⊢ en : τn ⊣ Γn
+   struct S { f1:τ1, ..., fn:τn } declared
+   ------------------------------------------------- (T-StructLit)
+   Γ ⊢ S { f1: e1, ..., fn: en } : S ⊣ Γn
+```
+
+Creating a struct checks the fields from left to right. Any linear resource used in a field is consumed exactly once, just like normal.
+
+### 16.3 Open Question: Field Resources **[OPEN]**
+
+If a struct contains a mix of linear and normal fields, is the whole struct linear? Currently, our rule is yes: if any field is linear, the whole struct is linear. But allowing fields to be checked independently might be better. We need to research this.
+
+---
+
+## 17. Literals and Basic Values **[SETTLED]**
+
+The literal rule from Section 2 is defined here:
+
+```ebnf
+literal     ::= int_lit | bool_lit | str_lit
+int_lit     ::= digit+ int_suffix
+int_suffix  ::= "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
+bool_lit    ::= "true" | "false"
+str_lit     ::= '"' char* '"'
+```
+
+Typing uses standard rules. An integer has the type of its suffix, a boolean is `bool`, and a string is `str`. We do not infer sizes. An integer without a suffix is a compile error. This matches our "no hidden magic" rule.
+
+---
+
+## 18. Summary of Open Tasks
 
 1. **Section 7.3**: Rules for stopping and restarting interrupts.
 2. **Section 6.3**: Splitting the global plan for each role automatically.
 3. **Section 12.2**: Rules for using resources inside loops.
 4. **Section 15**: Writing the rules for green threads.
 5. **Section 13.2**: How `mut` works with the memory model.
-6. **Section 11.1**: How early `return` handles resources.
-7. **Section 14.2**: Security rules for I/O like printing.
-8. **Section 5.4**: Knowing when the compiler can prove uniqueness.
-9. **Section 10.3**: Checking if role types can cross module boundaries.
-10. **Section 6.4**: Making contracts for External roles and treating them safely.
-11. **Section 3.3**: Writing down the basic type rules.
+6. **Section 16.3**: How structs handle mixed linear and normal fields.
+7. **Section 11.1**: How early `return` handles resources.
+8. **Section 14.2**: Security rules for I/O like printing.
+9. **Section 5.4**: Knowing when the compiler can prove uniqueness.
+10. **Section 10.3**: Checking if role types can cross module boundaries.
+11. **Section 6.4**: Making contracts for External roles and treating them safely.
+12. **Section 3.3**: Writing down the basic type rules.
 
 ---
 

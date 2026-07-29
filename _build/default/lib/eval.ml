@@ -1,0 +1,207 @@
+open Ast
+module StringMap = Map.Make(String)
+
+type value =
+  | VInt of int64
+  | VBool of bool
+  | VStr of string
+  | VUnit
+  | VOk of value
+  | VErr of value
+  | VStruct of string * (string * value) list
+[@@deriving show]
+
+type env = {
+  vars: (value ref) StringMap.t;
+  funcs: fn_decl StringMap.t;
+  enums: enum_decl StringMap.t;
+  imports: string list StringMap.t;
+}
+
+let empty_env = {
+  vars = StringMap.empty;
+  funcs = StringMap.empty;
+  enums = StringMap.empty;
+  imports = StringMap.empty;
+}
+
+exception EvalError of string
+
+let rec eval_expr env e =
+  match e with
+  | ELit (LInt (v, _)) -> VInt v
+  | ELit (LBool v) -> VBool v
+  | ELit (LStr v) -> VStr v
+  | EVar name ->
+      (match StringMap.find_opt name env.vars with
+      | Some v_ref -> !v_ref
+      | None -> raise (EvalError ("Undefined variable at runtime: " ^ name)))
+  | ECall (name, args) ->
+      let fn = StringMap.find name env.funcs in
+      let evaled_args = List.map (eval_expr env) args in
+      let new_vars = List.fold_left2 (fun acc (p: Ast.param) v ->
+        StringMap.add p.name (ref v) acc
+      ) StringMap.empty fn.Ast.params evaled_args in
+      let local_env = { env with vars = new_vars } in
+      let _, ret_val = eval_block local_env fn.body in
+      Option.value ret_val ~default:VUnit
+  | EPathCall (path, args) ->
+      let prefix = List.hd path in
+      let resolved_path =
+        match StringMap.find_opt prefix env.imports with
+        | Some actual_module -> actual_module @ (List.tl path)
+        | None -> path (* Assume it's an absolute path to a root library *)
+      in
+      if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] then (
+        let is_nl = resolved_path = ["std"; "io"; "println"] in
+        let arg = eval_expr env (List.hd args) in
+        (match arg with
+        | VInt i -> if is_nl then Printf.printf "%Ld\n" i else Printf.printf "%Ld" i
+        | VBool b -> if is_nl then Printf.printf "%b\n" b else Printf.printf "%b" b
+        | VStr s -> if is_nl then Printf.printf "%s\n" s else Printf.printf "%s" s
+        | VUnit -> if is_nl then Printf.printf "()\n" else Printf.printf "()"
+        | VOk _ -> if is_nl then Printf.printf "Ok(...)\n" else Printf.printf "Ok(...)"
+        | VErr _ -> if is_nl then Printf.printf "Err(...)\n" else Printf.printf "Err(...)"
+        | VStruct _ -> if is_nl then Printf.printf "struct{...}\n" else Printf.printf "struct{...}")
+        ;
+        VUnit
+      ) else
+        raise (EvalError "Unknown path call")
+  | EBinOp (e1, op, e2) ->
+      let v1 = eval_expr env e1 in
+      let v2 = eval_expr env e2 in
+      (match v1, v2 with
+      | VInt i1, VInt i2 ->
+          (match op with
+          | Add -> VInt (Int64.add i1 i2)
+          | Sub -> VInt (Int64.sub i1 i2)
+          | Mul -> VInt (Int64.mul i1 i2)
+          | Div -> VInt (Int64.div i1 i2)
+          | Shl -> VInt (Int64.shift_left i1 (Int64.to_int i2))
+          | Shr -> VInt (Int64.shift_right i1 (Int64.to_int i2))
+          | BitAnd -> VInt (Int64.logand i1 i2)
+          | BitOr -> VInt (Int64.logor i1 i2)
+          | Eq -> VBool (i1 = i2)
+          | Neq -> VBool (i1 <> i2)
+          | Lt -> VBool (i1 < i2)
+          | Gt -> VBool (i1 > i2)
+          | Lte -> VBool (i1 <= i2)
+          | Gte -> VBool (i1 >= i2))
+      | VBool b1, VBool b2 ->
+          (match op with
+          | Eq -> VBool (b1 = b2)
+          | Neq -> VBool (b1 <> b2)
+          | _ -> raise (EvalError "Invalid operator on booleans"))
+      | VStr s1, VStr s2 ->
+          (match op with
+          | Eq -> VBool (s1 = s2)
+          | Neq -> VBool (s1 <> s2)
+          | _ -> raise (EvalError "Invalid operator on strings"))
+      | _ -> raise (EvalError "Type mismatch in evaluation"))
+  | EIf (cond, thn, els) ->
+      (match eval_expr env cond with
+      | VBool true ->
+          let _, ret = eval_block env thn in
+          Option.value ret ~default:VUnit
+      | VBool false ->
+          (match els with
+          | Some e_block ->
+              let _, ret = eval_block env e_block in
+              Option.value ret ~default:VUnit
+          | None -> VUnit)
+      | _ -> raise (EvalError "If condition not a boolean"))
+  | EOk e -> VOk (eval_expr env e)
+  | EErr e -> VErr (eval_expr env e)
+  | EStruct (name, fields) ->
+      let evaluated_fields = List.map (fun (f_name, e) -> (f_name, eval_expr env e)) fields in
+      VStruct (name, evaluated_fields)
+  | EField (e, field_name) ->
+      let v = eval_expr env e in
+      (match v with
+      | VStruct (_, fields) ->
+          (match List.assoc_opt field_name fields with
+          | Some f_val -> f_val
+          | None -> raise (EvalError ("Field " ^ field_name ^ " not found")))
+      | _ -> raise (EvalError "Field access on non-struct"))
+  | EMatch (e, arms) ->
+      let v = eval_expr env e in
+      let rec try_match arms =
+        match arms with
+        | [] -> raise (EvalError "Non-exhaustive match")
+        | (pat, e_arm) :: rest ->
+            let matches, env_ext = match pat, v with
+              | PWildcard, _ -> true, env
+              | PIdent id, _ -> true, { env with vars = StringMap.add id (ref v) env.vars }
+              | PVariant (name, None), VOk _ when name = "Ok" -> true, env
+              | PVariant (name, None), VErr _ when name = "Err" -> true, env
+              | PVariant (name, Some [p]), VOk inner when name = "Ok" -> 
+                  (match p with
+                  | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
+                  | PWildcard -> true, env
+                  | _ -> false, env)
+              | PVariant (name, Some [p]), VErr inner when name = "Err" -> 
+                  (match p with
+                  | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
+                  | PWildcard -> true, env
+                  | _ -> false, env)
+              | _ -> false, env
+            in
+            if matches then eval_expr env_ext e_arm else try_match rest
+      in
+      try_match arms
+
+and eval_stmt env stmt =
+  match stmt with
+  | SDecl { kind = _; name; typ = _; init } ->
+      let v = eval_expr env init in
+      let v_ref = ref v in
+      { env with vars = StringMap.add name v_ref env.vars }
+  | SAssign (name, e) ->
+      let v = eval_expr env e in
+      let v_ref = StringMap.find name env.vars in
+      v_ref := v;
+      env
+  | SExpr e ->
+      ignore (eval_expr env e);
+      env
+  | SWhile (cond, b) ->
+      let rec loop () =
+        match eval_expr env cond with
+        | VBool true ->
+            ignore (eval_block env b);
+            loop ()
+        | VBool false -> ()
+        | _ -> raise (EvalError "while condition not a boolean")
+      in
+      loop ();
+      env
+  | SFor (id, e, b) ->
+      let v = eval_expr env e in
+      let env_for = { env with vars = StringMap.add id (ref v) env.vars } in
+      ignore (eval_block env_for b);
+      env
+
+and eval_block env block =
+  let env_final = List.fold_left eval_stmt env block.stmts in
+  let ret_val = Option.map (eval_expr env_final) block.ret_expr in
+  env_final, ret_val
+
+let eval_program prog =
+  let env_with_imports = List.fold_left (fun e (imp : import_decl) ->
+    let prefix = match imp.alias with
+      | Some a -> a
+      | None -> List.hd (List.rev imp.path)
+    in
+    { e with imports = StringMap.add prefix imp.path e.imports }
+  ) empty_env prog.Ast.imports in
+  let env = List.fold_left (fun e item ->
+    match item with
+    | IFn f -> { e with funcs = StringMap.add f.name f e.funcs }
+    | IEnum en -> { e with enums = StringMap.add en.name en e.enums }
+    | IStruct _ -> e
+  ) env_with_imports prog.Ast.items in
+  match StringMap.find_opt "main" env.funcs with
+  | Some main_fn ->
+      ignore (eval_block env main_fn.body)
+  | None ->
+      Printf.printf "Warning: no main function found\n"

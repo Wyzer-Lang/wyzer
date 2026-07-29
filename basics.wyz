@@ -1,0 +1,33 @@
+struct Point {
+    x: u32,
+    y: u32
+}
+
+fn main() {
+    var p: Point = Point { x: 10u32, y: 20u32 };
+    
+    std::io::print("p.x = ");
+    std::io::println(p.x);
+
+    var i: u32 = 0u32;
+    while i < 3u32 {
+        std::io::println(i);
+        i = i + 1u32;
+    }
+
+    let r: Result<u32, str> = Ok(42u32);
+    match (r) {
+        Ok(v) => std::io::println(v),
+        Err(e) => std::io::println(999u32)
+    };
+
+    let r2: Result<u32, str> = Err("error");
+    match (r2) {
+        Ok(v) => std::io::println(v),
+        Err(_) => std::io::println(0u32)
+    };
+
+    for item in 0u32 {
+        std::io::println(888u32);
+    }
+}

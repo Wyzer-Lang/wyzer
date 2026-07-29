@@ -1,0 +1,14 @@
+import std::io;
+
+fn main() {
+    let x: u32 = 10u32;
+    let y: u32 = 20u32;
+    let sum: u32 = x + y;
+    io::println(sum);
+
+    let b: bool = true;
+    io::println(b);
+
+    io::println("Hello, Wyzer!");
+    io::print("hello world!")
+}

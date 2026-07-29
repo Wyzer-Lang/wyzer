@@ -1,0 +1,10 @@
+(library
+ (name wyzer_lib)
+ (public_name wyzer.lib)
+ (libraries ppx_deriving.std)
+ (preprocess (pps ppx_deriving.std)))
+
+(menhir
+ (modules parser))
+
+(ocamllex lexer)

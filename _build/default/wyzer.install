@@ -1,0 +1,44 @@
+lib: [
+  "_build/install/default/lib/wyzer/META"
+  "_build/install/default/lib/wyzer/dune-package"
+  "_build/install/default/lib/wyzer/lib/ast.ml" {"lib/ast.ml"}
+  "_build/install/default/lib/wyzer/lib/eval.ml" {"lib/eval.ml"}
+  "_build/install/default/lib/wyzer/lib/lexer.ml" {"lib/lexer.ml"}
+  "_build/install/default/lib/wyzer/lib/parser.ml" {"lib/parser.ml"}
+  "_build/install/default/lib/wyzer/lib/parser.mli" {"lib/parser.mli"}
+  "_build/install/default/lib/wyzer/lib/typechecker.ml" {"lib/typechecker.ml"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib.a" {"lib/wyzer_lib.a"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib.cma" {"lib/wyzer_lib.cma"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib.cmi" {"lib/wyzer_lib.cmi"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib.cmt" {"lib/wyzer_lib.cmt"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib.cmx" {"lib/wyzer_lib.cmx"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib.cmxa" {"lib/wyzer_lib.cmxa"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib.ml" {"lib/wyzer_lib.ml"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Ast.cmi" {"lib/wyzer_lib__Ast.cmi"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Ast.cmt" {"lib/wyzer_lib__Ast.cmt"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Ast.cmx" {"lib/wyzer_lib__Ast.cmx"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Eval.cmi" {"lib/wyzer_lib__Eval.cmi"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Eval.cmt" {"lib/wyzer_lib__Eval.cmt"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Eval.cmx" {"lib/wyzer_lib__Eval.cmx"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Lexer.cmi" {"lib/wyzer_lib__Lexer.cmi"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Lexer.cmt" {"lib/wyzer_lib__Lexer.cmt"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Lexer.cmx" {"lib/wyzer_lib__Lexer.cmx"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Parser.cmi" {"lib/wyzer_lib__Parser.cmi"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Parser.cmt" {"lib/wyzer_lib__Parser.cmt"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Parser.cmti" {"lib/wyzer_lib__Parser.cmti"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Parser.cmx" {"lib/wyzer_lib__Parser.cmx"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Typechecker.cmi" {"lib/wyzer_lib__Typechecker.cmi"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Typechecker.cmt" {"lib/wyzer_lib__Typechecker.cmt"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Typechecker.cmx" {"lib/wyzer_lib__Typechecker.cmx"}
+  "_build/install/default/lib/wyzer/opam"
+]
+libexec: [
+  "_build/install/default/lib/wyzer/lib/wyzer_lib.cmxs" {"lib/wyzer_lib.cmxs"}
+]
+bin: [
+  "_build/install/default/bin/wyzerc"
+]
+doc: [
+  "_build/install/default/doc/wyzer/LICENSE"
+  "_build/install/default/doc/wyzer/README.md"
+]
