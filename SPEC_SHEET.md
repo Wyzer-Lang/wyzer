@@ -194,6 +194,35 @@ We do not need a special keyword for this. Sending a value just uses the normal 
 
 The compiler must split the global plan `G` into code for each specific role `ρ`. This is standard for simple cases. But Wyzer needs to do this for plans it figures out on its own, and for parts that can be interrupted. We have not written the rules for this yet.
 
+### 6.4 Native vs. External Roles **[DRAFT]**
+
+**Motivation.** Ada tried something similar, but almost nobody used it. This is because Ada forced every part of the network to be written in Ada. If a feature only works when everyone uses the same language, few people will use it. Wyzer must not make this mistake.
+
+**Design.** Roles are split into two kinds:
+
+```
+role ::= Native(ρ)      // compiled Wyzer code; compiler controls and verifies both sides
+       | External(ρ, C) // implemented in any language; C is a declared protocol contract
+```
+
+For Native to Native talks, both sides are checked by the compiler. It is completely safe.
+
+For talks with External roles, the safety is different. The Wyzer side is fully checked. The External side is only safe if it actually follows the contract:
+
+```
+   Γ_u, (x : τ@Native(ρ)) ⊢ x : τ@Native(ρ) ⊣ Γ_u, ∅
+   conforms(τ, C)                                        (* τ matches the declared contract C *)
+   -----------------------------------------------------------------------------------------
+   Native(ρ) -> External(ρ', C) : x   typechecks; Wyzer side is verified.
+```
+
+The compiler creates a contract file that other languages can read. This lets Wyzer talk to services written in any language.
+
+**Open Tasks:**
+- What format should the contract use? **[OPEN]**
+- How exactly do we check if types match the contract? **[OPEN]**
+- Since we don't control External roles, should we treat them like untrusted code instead of scripts? **[OPEN]**
+
 ---
 
 ## 7. Interrupt Safety **[DRAFT: basic rule only; stop and restart is OPEN]**
@@ -434,7 +463,8 @@ We plan to use green threads. Each thread acts as a basic participant (Section 7
 7. **Section 14.2**: Security rules for I/O like printing.
 8. **Section 5.4**: Knowing when the compiler can prove uniqueness.
 9. **Section 10.3**: Checking if role types can cross module boundaries.
-10. **Section 3.3**: Writing down the basic type rules.
+10. **Section 6.4**: Making contracts for External roles and treating them safely.
+11. **Section 3.3**: Writing down the basic type rules.
 
 ---
 
