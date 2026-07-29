@@ -10,6 +10,7 @@
    lib/lexer.ml
    lib/parser.ml
    lib/parser.mli
+   lib/perceus.ml
    lib/typechecker.ml
    lib/wyzer_lib.a
    lib/wyzer_lib.cma
@@ -31,6 +32,9 @@
    lib/wyzer_lib__Parser.cmt
    lib/wyzer_lib__Parser.cmti
    lib/wyzer_lib__Parser.cmx
+   lib/wyzer_lib__Perceus.cmi
+   lib/wyzer_lib__Perceus.cmt
+   lib/wyzer_lib__Perceus.cmx
    lib/wyzer_lib__Typechecker.cmi
    lib/wyzer_lib__Typechecker.cmt
    lib/wyzer_lib__Typechecker.cmx
@@ -76,6 +80,10 @@
        (path Parser)
        (intf (path lib/parser.mli))
        (impl (path lib/parser.ml))))
+     (module
+      (obj_name wyzer_lib__Perceus)
+      (visibility public)
+      (source (path Perceus) (impl (path lib/perceus.ml))))
      (module
       (obj_name wyzer_lib__Typechecker)
       (visibility public)

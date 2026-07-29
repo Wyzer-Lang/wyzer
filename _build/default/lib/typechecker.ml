@@ -86,10 +86,10 @@ let rec check_expr env e =
       | Lt | Gt | Lte | Gte ->
           if is_int_type t1 then TBase TBool
           else raise (TypeError "Comparison operators require integer types"))
-  | EOk e ->
+  | EOk (e, _) ->
       let t = check_expr env e in
       TResult (t, TBase (TCustom "_"))
-  | EErr e ->
+  | EErr (e, _) ->
       let t = check_expr env e in
       TResult (TBase (TCustom "_"), t)
   | EIf (cond, thn, els) ->
@@ -104,7 +104,7 @@ let rec check_expr env e =
       | None ->
           if t_thn <> None then raise (TypeError "if without else cannot return a value");
           Option.value t_thn ~default:(TBase TUnit))
-  | EStruct (name, fields) ->
+  | EStruct (name, fields, _) ->
       (match StringMap.find_opt name env.structs with
       | Some s_decl ->
           if List.length fields <> List.length s_decl.fields then
@@ -149,6 +149,7 @@ let rec check_expr env e =
       let first_t = List.hd arm_types in
       List.iter (fun t -> if t <> first_t then raise (TypeError "Match arms have different types")) arm_types;
       first_t
+  | EDup (_, e) -> check_expr env e
 
 and check_stmt env stmt =
   match stmt with
@@ -185,6 +186,10 @@ and check_stmt env stmt =
       let _t_e = check_expr env e in
       let env_for = { env with vars = StringMap.add id (TBase TU8, false) env.vars } in
       let _, _ = check_block env_for b in
+      env
+  | SDrop x ->
+      (* Just verify x exists in environment for sanity *)
+      if not (StringMap.mem x env.vars) then raise (TypeError ("Cannot drop undefined variable: " ^ x));
       env
 
 and check_block env block =

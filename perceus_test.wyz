@@ -1,0 +1,17 @@
+struct Point {
+    x: u32,
+    y: u32
+}
+
+fn main() {
+    var p: Point = Point { x: 10u32, y: 20u32 };
+    
+    // Test in-place mutation: `p` is used for the last time in this struct creation!
+    var p2: Point = Point { x: 100u32, y: p.y };
+    
+    std::io::print("p2.x = ");
+    std::io::println(p2.x);
+    
+    std::io::print("p2.y = ");
+    std::io::println(p2.y);
+}

@@ -1040,7 +1040,7 @@ let _menhir_action_035 =
   fun e ->
     (
 # 109 "lib/parser.mly"
-                            ( EOk e )
+                            ( EOk (e, None) )
 # 1045 "lib/parser.ml"
      : (Ast.expr))
 
@@ -1048,7 +1048,7 @@ let _menhir_action_036 =
   fun e ->
     (
 # 110 "lib/parser.mly"
-                             ( EErr e )
+                             ( EErr (e, None) )
 # 1053 "lib/parser.ml"
      : (Ast.expr))
 
@@ -1077,7 +1077,7 @@ let _menhir_action_039 =
      in
     (
 # 113 "lib/parser.mly"
-                                                                      ( EStruct (name, fields) )
+                                                                      ( EStruct (name, fields, None) )
 # 1082 "lib/parser.ml"
      : (Ast.expr))
 

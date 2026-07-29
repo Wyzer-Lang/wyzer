@@ -24,7 +24,8 @@ let process_file filename =
   
   try
     let _ = Typechecker.check_program prog in
-    Eval.eval_program prog
+    let prog_transformed = Perceus.transform_program prog in
+    Eval.eval_program prog_transformed
   with
   | Typechecker.TypeError msg ->
       fprintf stderr "Type Error: %s\n" msg;

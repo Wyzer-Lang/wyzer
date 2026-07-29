@@ -6,6 +6,7 @@ lib: [
   "_build/install/default/lib/wyzer/lib/lexer.ml" {"lib/lexer.ml"}
   "_build/install/default/lib/wyzer/lib/parser.ml" {"lib/parser.ml"}
   "_build/install/default/lib/wyzer/lib/parser.mli" {"lib/parser.mli"}
+  "_build/install/default/lib/wyzer/lib/perceus.ml" {"lib/perceus.ml"}
   "_build/install/default/lib/wyzer/lib/typechecker.ml" {"lib/typechecker.ml"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib.a" {"lib/wyzer_lib.a"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib.cma" {"lib/wyzer_lib.cma"}
@@ -27,6 +28,9 @@ lib: [
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Parser.cmt" {"lib/wyzer_lib__Parser.cmt"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Parser.cmti" {"lib/wyzer_lib__Parser.cmti"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Parser.cmx" {"lib/wyzer_lib__Parser.cmx"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Perceus.cmi" {"lib/wyzer_lib__Perceus.cmi"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Perceus.cmt" {"lib/wyzer_lib__Perceus.cmt"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Perceus.cmx" {"lib/wyzer_lib__Perceus.cmx"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Typechecker.cmi" {"lib/wyzer_lib__Typechecker.cmi"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Typechecker.cmt" {"lib/wyzer_lib__Typechecker.cmt"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Typechecker.cmx" {"lib/wyzer_lib__Typechecker.cmx"}

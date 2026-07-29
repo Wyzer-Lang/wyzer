@@ -12,5 +12,8 @@ module Lexer = Wyzer_lib__Lexer
 (** @canonical Wyzer_lib.Parser *)
 module Parser = Wyzer_lib__Parser
 
+(** @canonical Wyzer_lib.Perceus *)
+module Perceus = Wyzer_lib__Perceus
+
 (** @canonical Wyzer_lib.Typechecker *)
 module Typechecker = Wyzer_lib__Typechecker

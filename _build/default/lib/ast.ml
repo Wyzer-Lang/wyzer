@@ -38,11 +38,12 @@ type expr =
   | EPathCall of string list * expr list
   | EBinOp of expr * binop * expr
   | EIf of expr * block * block option
-  | EOk of expr
-  | EErr of expr
-  | EStruct of string * (string * expr) list
+  | EOk of expr * string option
+  | EErr of expr * string option
+  | EStruct of string * (string * expr) list * string option
   | EField of expr * string
   | EMatch of expr * (pattern * expr) list
+  | EDup of string * expr
 [@@deriving show, eq]
 
 and stmt =
@@ -51,6 +52,7 @@ and stmt =
   | SExpr of expr
   | SWhile of expr * block
   | SFor of string * expr * block
+  | SDrop of string
 [@@deriving show, eq]
 
 and block = {

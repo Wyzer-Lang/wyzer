@@ -6,10 +6,29 @@ type value =
   | VBool of bool
   | VStr of string
   | VUnit
-  | VOk of value
-  | VErr of value
-  | VStruct of string * (string * value) list
+  | VPtr of int
 [@@deriving show]
+
+type heap_val =
+  | HStruct of string * (string * value) list
+  | HOk of value
+  | HErr of value
+
+type heap_entry = {
+  ref_count: int ref;
+  mutable data: heap_val;
+}
+
+module IntMap = Map.Make(Int)
+let heap : heap_entry IntMap.t ref = ref IntMap.empty
+let next_ptr = ref 1
+
+let alloc_heap (v: heap_val) =
+  let ptr = !next_ptr in
+  next_ptr := ptr + 1;
+  heap := IntMap.add ptr { ref_count = ref 1; data = v } !heap;
+  Printf.printf "[Perceus] Allocated at 0x%X\n" ptr;
+  ptr
 
 type env = {
   vars: (value ref) StringMap.t;
@@ -60,10 +79,13 @@ let rec eval_expr env e =
         | VBool b -> if is_nl then Printf.printf "%b\n" b else Printf.printf "%b" b
         | VStr s -> if is_nl then Printf.printf "%s\n" s else Printf.printf "%s" s
         | VUnit -> if is_nl then Printf.printf "()\n" else Printf.printf "()"
-        | VOk _ -> if is_nl then Printf.printf "Ok(...)\n" else Printf.printf "Ok(...)"
-        | VErr _ -> if is_nl then Printf.printf "Err(...)\n" else Printf.printf "Err(...)"
-        | VStruct _ -> if is_nl then Printf.printf "struct{...}\n" else Printf.printf "struct{...}")
-        ;
+        | VPtr ptr -> 
+             let entry = IntMap.find ptr !heap in
+             (match entry.data with
+             | HOk _ -> if is_nl then Printf.printf "Ok(...)\n" else Printf.printf "Ok(...)"
+             | HErr _ -> if is_nl then Printf.printf "Err(...)\n" else Printf.printf "Err(...)"
+             | HStruct _ -> if is_nl then Printf.printf "struct{...}\n" else Printf.printf "struct{...}")
+        );
         VUnit
       ) else
         raise (EvalError "Unknown path call")
@@ -110,19 +132,63 @@ let rec eval_expr env e =
               Option.value ret ~default:VUnit
           | None -> VUnit)
       | _ -> raise (EvalError "If condition not a boolean"))
-  | EOk e -> VOk (eval_expr env e)
-  | EErr e -> VErr (eval_expr env e)
-  | EStruct (name, fields) ->
+  | EOk (e, reuse) -> 
+      let hval = HOk (eval_expr env e) in
+      (match reuse with
+      | Some r_var ->
+          let v_ref = StringMap.find r_var env.vars in
+          (match !v_ref with
+          | VPtr ptr ->
+              let entry = IntMap.find ptr !heap in
+              if !(entry.ref_count) = 1 then (
+                 Printf.printf "[Perceus] Reused 0x%X in-place for Ok!\n" ptr;
+                 entry.data <- hval;
+                 VPtr ptr
+              ) else VPtr (alloc_heap hval)
+          | _ -> VPtr (alloc_heap hval))
+      | None -> VPtr (alloc_heap hval))
+  | EErr (e, reuse) -> 
+      let hval = HErr (eval_expr env e) in
+      (match reuse with
+      | Some r_var ->
+          let v_ref = StringMap.find r_var env.vars in
+          (match !v_ref with
+          | VPtr ptr ->
+              let entry = IntMap.find ptr !heap in
+              if !(entry.ref_count) = 1 then (
+                 Printf.printf "[Perceus] Reused 0x%X in-place for Err!\n" ptr;
+                 entry.data <- hval;
+                 VPtr ptr
+              ) else VPtr (alloc_heap hval)
+          | _ -> VPtr (alloc_heap hval))
+      | None -> VPtr (alloc_heap hval))
+  | EStruct (name, fields, reuse) ->
       let evaluated_fields = List.map (fun (f_name, e) -> (f_name, eval_expr env e)) fields in
-      VStruct (name, evaluated_fields)
+      let hval = HStruct (name, evaluated_fields) in
+      (match reuse with
+      | Some r_var ->
+          let v_ref = StringMap.find r_var env.vars in
+          (match !v_ref with
+          | VPtr ptr ->
+              let entry = IntMap.find ptr !heap in
+              if !(entry.ref_count) = 1 then (
+                 Printf.printf "[Perceus] Reused 0x%X in-place for struct %s!\n" ptr name;
+                 entry.data <- hval;
+                 VPtr ptr
+              ) else VPtr (alloc_heap hval)
+          | _ -> VPtr (alloc_heap hval))
+      | None -> VPtr (alloc_heap hval))
   | EField (e, field_name) ->
       let v = eval_expr env e in
       (match v with
-      | VStruct (_, fields) ->
-          (match List.assoc_opt field_name fields with
-          | Some f_val -> f_val
-          | None -> raise (EvalError ("Field " ^ field_name ^ " not found")))
-      | _ -> raise (EvalError "Field access on non-struct"))
+      | VPtr ptr ->
+          (match (IntMap.find ptr !heap).data with
+          | HStruct (_, fields) ->
+              (match List.assoc_opt field_name fields with
+              | Some f_val -> f_val
+              | None -> raise (EvalError ("Field " ^ field_name ^ " not found")))
+          | _ -> raise (EvalError "Field access on non-struct"))
+      | _ -> raise (EvalError "Field access on non-pointer"))
   | EMatch (e, arms) ->
       let v = eval_expr env e in
       let rec try_match arms =
@@ -132,23 +198,40 @@ let rec eval_expr env e =
             let matches, env_ext = match pat, v with
               | PWildcard, _ -> true, env
               | PIdent id, _ -> true, { env with vars = StringMap.add id (ref v) env.vars }
-              | PVariant (name, None), VOk _ when name = "Ok" -> true, env
-              | PVariant (name, None), VErr _ when name = "Err" -> true, env
-              | PVariant (name, Some [p]), VOk inner when name = "Ok" -> 
-                  (match p with
-                  | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
-                  | PWildcard -> true, env
+              | PVariant (name, None), VPtr ptr -> 
+                  (match (IntMap.find ptr !heap).data with
+                  | HOk _ when name = "Ok" -> true, env
+                  | HErr _ when name = "Err" -> true, env
                   | _ -> false, env)
-              | PVariant (name, Some [p]), VErr inner when name = "Err" -> 
-                  (match p with
-                  | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
-                  | PWildcard -> true, env
+              | PVariant (name, Some [p]), VPtr ptr -> 
+                  (match (IntMap.find ptr !heap).data with
+                  | HOk inner when name = "Ok" -> 
+                      (match p with
+                      | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
+                      | PWildcard -> true, env
+                      | _ -> false, env)
+                  | HErr inner when name = "Err" -> 
+                      (match p with
+                      | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
+                      | PWildcard -> true, env
+                      | _ -> false, env)
                   | _ -> false, env)
               | _ -> false, env
             in
             if matches then eval_expr env_ext e_arm else try_match rest
       in
       try_match arms
+  | EDup (_, e) -> 
+      let v = eval_expr env e in
+      (match v with
+      | VPtr ptr ->
+          (match IntMap.find_opt ptr !heap with
+          | Some entry -> 
+              entry.ref_count := !(entry.ref_count) + 1;
+              Printf.printf "[Perceus] Dup 0x%X (refcount = %d)\n" ptr !(entry.ref_count);
+          | None -> raise (EvalError "Dup on freed pointer"))
+      | _ -> ());
+      v
 
 and eval_stmt env stmt =
   match stmt with
@@ -179,6 +262,23 @@ and eval_stmt env stmt =
       let v = eval_expr env e in
       let env_for = { env with vars = StringMap.add id (ref v) env.vars } in
       ignore (eval_block env_for b);
+      env
+  | SDrop x ->
+      (match StringMap.find_opt x env.vars with
+      | Some v_ref ->
+          (match !v_ref with
+          | VPtr ptr ->
+              (match IntMap.find_opt ptr !heap with
+              | Some entry ->
+                  entry.ref_count := !(entry.ref_count) - 1;
+                  Printf.printf "[Perceus] Drop 0x%X (refcount = %d)\n" ptr !(entry.ref_count);
+                  if !(entry.ref_count) = 0 then (
+                    Printf.printf "[Perceus] Freed 0x%X\n" ptr;
+                    heap := IntMap.remove ptr !heap
+                  )
+              | None -> ())
+          | _ -> ())
+      | None -> ());
       env
 
 and eval_block env block =

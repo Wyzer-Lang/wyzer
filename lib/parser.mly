@@ -106,11 +106,11 @@ expr:
   | e1=expr GT e2=expr { EBinOp (e1, Gt, e2) }
   | e1=expr LTE e2=expr { EBinOp (e1, Lte, e2) }
   | e1=expr GTE e2=expr { EBinOp (e1, Gte, e2) }
-  | OK LPAREN e=expr RPAREN { EOk e }
-  | ERR LPAREN e=expr RPAREN { EErr e }
+  | OK LPAREN e=expr RPAREN { EOk (e, None) }
+  | ERR LPAREN e=expr RPAREN { EErr (e, None) }
   | IF cond=expr thn=block els=option(ELSE e=else_branch {e}) { EIf (cond, thn, els) }
   | e=expr DOT f=IDENT { EField (e, f) }
-  | name=IDENT LBRACE fields=separated_list(COMMA, field_init) RBRACE { EStruct (name, fields) }
+  | name=IDENT LBRACE fields=separated_list(COMMA, field_init) RBRACE { EStruct (name, fields, None) }
   | MATCH e=expr LBRACE arms=nonempty_list(match_arm) RBRACE { EMatch (e, arms) }
   | path=module_path LPAREN args=separated_list(COMMA, expr) RPAREN
     { match path with

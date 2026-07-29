@@ -1457,7 +1457,7 @@ and (xv_variant_ident, xv_type_decl, xv_typ, xv_stmt, xv_separated_nonempty_list
   ) (_startpos_name_ : Lexing.position) (_endpos_name_ : Lexing.position) (_startofs_name_ : int) (_endofs_name_ : int) (_loc_name_ : Lexing.position * Lexing.position) : ('tv_expr) ->
     
 # 113 "lib/parser.mly"
-                                                                      ( EStruct (name, fields) )
+                                                                      ( EStruct (name, fields, None) )
 # 1462 "lib/parser__mock.ml.mock"
      in
   let _ = fun (_startpos : Lexing.position) (_endpos : Lexing.position) (_endpos__0_ : Lexing.position) (_symbolstartpos : Lexing.position) (_startofs : int) (_endofs : int) (_endofs__0_ : int) (_symbolstartofs : int) (_sloc : Lexing.position * Lexing.position) (_loc : Lexing.position * Lexing.position) (
@@ -1523,7 +1523,7 @@ and (xv_variant_ident, xv_type_decl, xv_typ, xv_stmt, xv_separated_nonempty_list
    : unit) (_startpos__1_ : Lexing.position) (_endpos__1_ : Lexing.position) (_startofs__1_ : int) (_endofs__1_ : int) (_loc__1_ : Lexing.position * Lexing.position) : ('tv_expr) ->
     
 # 110 "lib/parser.mly"
-                             ( EErr e )
+                             ( EErr (e, None) )
 # 1528 "lib/parser__mock.ml.mock"
      in
   let _ = fun (_startpos : Lexing.position) (_endpos : Lexing.position) (_endpos__0_ : Lexing.position) (_symbolstartpos : Lexing.position) (_startofs : int) (_endofs : int) (_endofs__0_ : int) (_symbolstartofs : int) (_sloc : Lexing.position * Lexing.position) (_loc : Lexing.position * Lexing.position) (
@@ -1545,7 +1545,7 @@ and (xv_variant_ident, xv_type_decl, xv_typ, xv_stmt, xv_separated_nonempty_list
    : unit) (_startpos__1_ : Lexing.position) (_endpos__1_ : Lexing.position) (_startofs__1_ : int) (_endofs__1_ : int) (_loc__1_ : Lexing.position * Lexing.position) : ('tv_expr) ->
     
 # 109 "lib/parser.mly"
-                            ( EOk e )
+                            ( EOk (e, None) )
 # 1550 "lib/parser__mock.ml.mock"
      in
   let _ = fun (_startpos : Lexing.position) (_endpos : Lexing.position) (_endpos__0_ : Lexing.position) (_symbolstartpos : Lexing.position) (_startofs : int) (_endofs : int) (_endofs__0_ : int) (_symbolstartofs : int) (_sloc : Lexing.position * Lexing.position) (_loc : Lexing.position * Lexing.position) (
