@@ -24,12 +24,17 @@ rule read = parse
   | "let" { LET }
   | "var" { VAR }
   | "const" { CONST }
+  | "global" { GLOBAL }
+  | "extern" { EXTERN }
   | "in" { IN }
   | "match" { MATCH }
+  | "return" { RETURN }
+  | "transfer" { TRANSFER }
   | "struct" { STRUCT }
   | "Result" { RESULT }
   | "Ok" { OK }
   | "Err" { ERR }
+  | "iota" { IOTA }
   | "_" { UNDERSCORE }
   | "u8" { U8 } | "u16" { U16 } | "u32" { U32 } | "u64" { U64 }
   | "i8" { I8 } | "i16" { I16 } | "i32" { I32 } | "i64" { I64 }
@@ -56,6 +61,8 @@ rule read = parse
   | ")" { RPAREN }
   | "{" { LBRACE }
   | "}" { RBRACE }
+  | "[" { LBRACKET }
+  | "]" { RBRACKET }
   | "," { COMMA }
   | ":" { COLON }
   | ";" { SEMICOLON }

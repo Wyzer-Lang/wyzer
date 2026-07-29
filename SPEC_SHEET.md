@@ -109,9 +109,16 @@ pattern     ::= ident | ident "(" pattern_list? ")"
               Γ1 ⊢ e1 e2 : τ2 ⊣ Γ2
 ```
 
-### 3.3 Current Status
+### 3.3 Type Compatibility and Casting **[SETTLED]**
 
-Rules for basic things like numbers, math, and `let` use standard ideas. They are **[SETTLED]** and will be written down later.
+Wyzer requires strict, exact type matches. There are absolutely no implicit type casts (e.g., `u16` will not silently promote to `u32`).
+We will introduce an explicit casting operator (`as`) in the future for intentional conversions.
+
+### 3.4 Arithmetic Overflow **[SETTLED]**
+
+Wyzer adopts a strict memory-safe stance on integer overflow.
+Any arithmetic operation that exceeds the bounds of its explicit bit-width (e.g., an `i32` exceeding `2^31 - 1`) results in a guaranteed **panic** (runtime crash). 
+In the future, we may introduce special wrapping operators (e.g., `+%`) if wrapping behavior is explicitly desired.
 
 ---
 

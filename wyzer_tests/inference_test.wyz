@@ -1,0 +1,21 @@
+fn expects_u64(x: u64) -> u64 {
+    return x;
+}
+
+fn main() -> u32 {
+    // 1. Inference from expected type (u8)
+    let a: u8 = 255;
+    
+    // 2. Inference from function parameter expected type (u64)
+    let b = expects_u64(10);
+    
+    // 3. Default inference (i32)
+    let c = 0;
+    
+    // 4. Test mutability and reassignment with inference
+    var d: u32 = 0;
+    d = 100;
+    
+    // 5. Inference from return type of main (u32)
+    return 0;
+}

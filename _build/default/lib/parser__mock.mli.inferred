@@ -6,6 +6,7 @@ type token =
   | U64
   | U32
   | U16
+  | TRANSFER
   | STRUCT
   | STRING_VAL of string
   | STR
@@ -15,7 +16,9 @@ type token =
   | SHL
   | SEMICOLON
   | RPAREN
+  | RETURN
   | RESULT
+  | RBRACKET
   | RBRACE
   | PLUS
   | OK
@@ -26,7 +29,9 @@ type token =
   | LT
   | LPAREN
   | LET
+  | LBRACKET
   | LBRACE
+  | IOTA
   | INT of int64
   | IN
   | IMPORT
@@ -38,9 +43,11 @@ type token =
   | I16
   | GTE
   | GT
+  | GLOBAL
   | FOR
   | FN
   | FATARROW
+  | EXTERN
   | ERR
   | EQEQ
   | EQ
@@ -60,8 +67,8 @@ type token =
   | AS
 val menhir_begin_marker : int
 val xv_variant_ident : string
-val xv_type_decl : Ast.item
 val xv_typ : Ast.typ
+val xv_struct_decl : Ast.struct_decl
 val xv_stmt : Ast.stmt
 val xv_separated_nonempty_list_COMMA_pattern_ : Ast.pattern list
 val xv_separated_nonempty_list_COMMA_param_ : Ast.param list
@@ -78,13 +85,18 @@ val xv_separated_list_COMMA_enum_member_ : Ast.enum_member list
 val xv_program : Ast.program
 val xv_pattern : Ast.pattern
 val xv_param : Ast.param
-val xv_option___anonymous_7_ : Ast.block option
-val xv_option___anonymous_6_ : Ast.block option
-val xv_option___anonymous_5_ : Ast.typ option
+val xv_option_int_suffix_ : Ast.base_type option
+val xv_option_expr_ : Ast.expr option
+val xv_option___anonymous_9_ : Ast.block option
+val xv_option___anonymous_8_ : Ast.typ option
+val xv_option___anonymous_7_ : Ast.typ option
+val xv_option___anonymous_6_ : Ast.typ option
+val xv_option___anonymous_5_ : Ast.expr option
 val xv_option___anonymous_4_ : Ast.typ option
-val xv_option___anonymous_3_ : Ast.typ option
-val xv_option___anonymous_2_ : Ast.expr option
-val xv_option___anonymous_1_ : Ast.typ option
+val xv_option___anonymous_3_ : string option
+val xv_option___anonymous_2_ : Ast.typ option
+val xv_option___anonymous_10_ : Ast.block option
+val xv_option___anonymous_1_ : string option
 val xv_option___anonymous_0_ : string option
 val xv_nonempty_list_match_arm_ : (Ast.pattern * Ast.expr) list
 val xv_module_path : string list
@@ -113,12 +125,15 @@ val xv_else_branch : Ast.block
 val xv_block_stmts : Ast.block
 val xv_block : Ast.block
 val xv_base_type : Ast.base_type
-val xv___anonymous_7 : Ast.block
-val xv___anonymous_6 : Ast.block
-val xv___anonymous_5 : Ast.typ
+val xv___anonymous_9 : Ast.block
+val xv___anonymous_8 : Ast.typ
+val xv___anonymous_7 : Ast.typ
+val xv___anonymous_6 : Ast.typ
+val xv___anonymous_5 : Ast.expr
 val xv___anonymous_4 : Ast.typ
-val xv___anonymous_3 : Ast.typ
-val xv___anonymous_2 : Ast.expr
-val xv___anonymous_1 : Ast.typ
+val xv___anonymous_3 : string
+val xv___anonymous_2 : Ast.typ
+val xv___anonymous_10 : Ast.block
+val xv___anonymous_1 : string
 val xv___anonymous_0 : string
 val menhir_end_marker : int

@@ -23,6 +23,17 @@ Contributions are welcome, if you want to contribute to the language please read
 
 ---
 
+## Documentation
+
+To learn how to program in Wyzer, check out our official documentation:
+1. [Introduction](docs/01_introduction.md)
+2. [Variables and Types](docs/02_variables_and_types.md)
+3. [Control Flow](docs/03_control_flow.md)
+4. [Functions and Structs](docs/04_functions_and_structs.md)
+5. [Memory Model](docs/05_memory_model.md)
+
+---
+
 ## How to Code in Wyzer
 
 Wyzer is designed to be simple, explicit, and easy to read. Here is a quick look at how you write code in Wyzer.

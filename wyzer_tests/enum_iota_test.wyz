@@ -1,0 +1,39 @@
+enum Foo: u8 (iota) {
+  Var1, // 0
+  Var2, // 1
+  Var3  // 2
+}
+
+enum Bar: u8 (1 << iota) {
+  Var1, // 1
+  Var2, // 2
+  Var3  // 4
+}
+
+enum Baz: u32 (iota * 2) {
+  Var1, // 0
+  Var2, // 2
+  Var3, // 4
+  Var4 = 12, // 24
+  Var5, // 26
+  Var6  // 28
+}
+
+fn main() -> u32 {
+    std::io::println(Foo::Var1);
+    std::io::println(Foo::Var2);
+    std::io::println(Foo::Var3);
+    
+    std::io::println(Bar::Var1);
+    std::io::println(Bar::Var2);
+    std::io::println(Bar::Var3);
+    
+    std::io::println(Baz::Var1);
+    std::io::println(Baz::Var2);
+    std::io::println(Baz::Var3);
+    std::io::println(Baz::Var4);
+    std::io::println(Baz::Var5);
+    std::io::println(Baz::Var6);
+    
+    return 0;
+}

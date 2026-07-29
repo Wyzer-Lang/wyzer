@@ -7,11 +7,11 @@ open Ast
 %token <string> STRING_VAL
 %token <string> IDENT
 
-%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST IN MATCH RESULT OK ERR STRUCT UNDERSCORE
+%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA
 %token U8 U16 U32 U64 I8 I16 I32 I64 BOOL STR
 %token PLUS MINUS STAR SLASH SHL SHR BITAND BITOR
 %token EQEQ NEQ LT GT LTE GTE EQ FATARROW
-%token LPAREN RPAREN LBRACE RBRACE COMMA COLON SEMICOLON DOT COLONCOLON AT
+%token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA COLON SEMICOLON DOT COLONCOLON AT
 %token EOF
 
 %left BITOR
@@ -20,7 +20,9 @@ open Ast
 %left SHL SHR
 %left PLUS MINUS
 %left STAR SLASH
+%left AS
 %left DOT
+%left LBRACKET
 
 %start <Ast.program> program
 %%
@@ -38,24 +40,31 @@ module_path:
 item:
   | f=fn_decl { IFn f }
   | e=enum_decl { IEnum e }
-  | t=type_decl { t }
+  | s=struct_decl { IStruct s }
+  | GLOBAL name=IDENT COLON t=typ EQ init=expr SEMICOLON { IGlobal { name; typ = t; init } }
 
-type_decl:
-  | STRUCT name=IDENT LBRACE fields=separated_list(COMMA, field) RBRACE { IStruct { name; fields } }
+struct_decl:
+  | STRUCT name=IDENT LBRACE fields=separated_list(COMMA, field) RBRACE { { name; fields } }
 
 field:
   | name=IDENT COLON typ=typ { ({ name; typ } : Ast.field) }
 
 fn_decl:
-  | FN name=IDENT LPAREN params=separated_list(COMMA, param) RPAREN ret_typ=option(MINUS GT t=typ {t}) body=block
-    { { name; params; ret_typ = Option.value ret_typ ~default:(TBase TUnit); body } }
+  | EXTERN FN name=IDENT LPAREN params=separated_list(COMMA, param) RPAREN role=option(AT r=IDENT {r}) ret=option(MINUS GT t=typ {t}) SEMICOLON
+    { { name; params; ret_typ = ret; role; is_extern = true; body = None } }
+  | FN name=IDENT LPAREN params=separated_list(COMMA, param) RPAREN role=option(AT r=IDENT {r}) ret=option(MINUS GT t=typ {t}) b=block
+    { { name; params; ret_typ = ret; role; is_extern = false; body = Some b } }
 
 param:
   | name=IDENT COLON typ=typ { ({ name; typ } : Ast.param) }
 
 typ:
   | b=base_type { TBase b }
+  | b=base_type AT role=IDENT { TRole (TBase b, role) }
   | RESULT LT t1=typ COMMA t2=typ GT { TResult (t1, t2) }
+  | RESULT LT t1=typ COMMA t2=typ GT AT role=IDENT { TRole (TResult (t1, t2), role) }
+  | LBRACKET t=typ RBRACKET { TArray t }
+  | LBRACKET t=typ RBRACKET AT role=IDENT { TRole (TArray t, role) }
 
 base_type:
   | U8 { TU8 } | U16 { TU16 } | U32 { TU32 } | U64 { TU64 }
@@ -68,7 +77,7 @@ enum_decl:
     { { name; base_typ; iota_expr; members } }
 
 enum_member:
-  | name=IDENT const_expr=option(EQ e=expr {e}) { { name; const_expr } }
+  | name=IDENT explicit_val=option(EQ e=expr {e}) { { name; explicit_val; computed_val = ref None } }
 
 block:
   | LBRACE RBRACE { { stmts = []; ret_expr = None } }
@@ -86,7 +95,8 @@ stmt:
     { SDecl { kind = VVar; name; typ; init } }
   | CONST name=IDENT typ=option(COLON t=typ {t}) EQ init=expr SEMICOLON
     { SDecl { kind = VConst; name; typ; init } }
-  | name=IDENT EQ e=expr SEMICOLON { SAssign (name, e) }
+  | lhs=expr EQ e=expr SEMICOLON { SAssign (lhs, e) }
+  | RETURN e=option(expr) SEMICOLON { SReturn e }
   | e=expr SEMICOLON { SExpr e }
   | WHILE cond=expr b=block { SWhile (cond, b) }
   | FOR id=IDENT IN e=expr b=block { SFor (id, e, b) }
@@ -106,8 +116,11 @@ expr:
   | e1=expr GT e2=expr { EBinOp (e1, Gt, e2) }
   | e1=expr LTE e2=expr { EBinOp (e1, Lte, e2) }
   | e1=expr GTE e2=expr { EBinOp (e1, Gte, e2) }
+  | e=expr AS t=typ { ECast (e, t) }
   | OK LPAREN e=expr RPAREN { EOk (e, None) }
   | ERR LPAREN e=expr RPAREN { EErr (e, None) }
+  | id1=IDENT COLONCOLON rest=module_path { EPathCall (id1 :: rest, []) }
+  | IOTA { EVar "iota" }
   | IF cond=expr thn=block els=option(ELSE e=else_branch {e}) { EIf (cond, thn, els) }
   | e=expr DOT f=IDENT { EField (e, f) }
   | name=IDENT LBRACE fields=separated_list(COMMA, field_init) RBRACE { EStruct (name, fields, None) }
@@ -116,6 +129,9 @@ expr:
     { match path with
       | [id] -> ECall (id, args)
       | _ -> EPathCall (path, args) }
+  | LBRACKET elems=separated_list(COMMA, expr) RBRACKET { EArray elems }
+  | TRANSFER LPAREN e=expr COMMA r=IDENT RPAREN { ETransfer (e, r) }
+  | e1=expr LBRACKET e2=expr RBRACKET %prec LBRACKET { EIndex (e1, e2) }
   | l=literal { ELit l }
   | id=IDENT { EVar id }
   | LPAREN e=expr RPAREN { e }
@@ -144,7 +160,7 @@ else_branch:
   | IF cond=expr thn=block els=option(ELSE e=else_branch {e}) { { stmts = []; ret_expr = Some (EIf (cond, thn, els)) } }
 
 literal:
-  | v=INT t=int_suffix { LInt (v, t) }
+  | v=INT t=option(int_suffix) { LInt (v, t) }
   | v=BOOL_VAL { LBool v }
   | v=STRING_VAL { LStr v }
 

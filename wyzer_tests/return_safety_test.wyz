@@ -1,0 +1,6 @@
+fn main() {
+    let linear_msg: u32@Client = 42;
+    
+    // Attempting to return while the linear resource is unconsumed!
+    return;
+}

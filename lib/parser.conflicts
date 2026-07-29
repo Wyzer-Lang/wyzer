@@ -1,10 +1,9 @@
 
-** Conflict (shift/reduce) in state 46.
-** Tokens involved: STRING_VAL OK LPAREN INT IF IDENT ERR BOOL_VAL
-** The following explanations concentrate on token STRING_VAL.
+** Conflict (shift/reduce) in state 82.
+** Token involved: LBRACE
 ** This state is reached from program after reading:
 
-list(import_decl) FN IDENT LPAREN loption(separated_nonempty_list(COMMA,param)) RPAREN option(__anonymous_1) LBRACE
+list(import_decl) ENUM IDENT COLON base_type LPAREN MATCH IDENT
 
 ** The derivations that appear below have the following common factor:
 ** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
@@ -12,57 +11,19 @@ list(import_decl) FN IDENT LPAREN loption(separated_nonempty_list(COMMA,param)) 
 program 
 list(import_decl) list(item) EOF 
                   item list(item) 
-                  fn_decl 
-                  FN IDENT LPAREN loption(separated_nonempty_list(COMMA,param)) RPAREN option(__anonymous_1) block 
-                                                                                                             (?)
+                  enum_decl 
+                  ENUM IDENT COLON base_type LPAREN expr RPAREN LBRACE loption(separated_nonempty_list(COMMA,enum_member)) RBRACE 
+                                                    (?)
 
-** In state 46, looking ahead at STRING_VAL, reducing production
-** list(stmt) ->
-** is permitted because of the following sub-derivation:
-
-LBRACE list(stmt) option(expr) RBRACE // lookahead token appears because option(expr) can begin with STRING_VAL
-       . 
-
-** In state 46, looking ahead at STRING_VAL, shifting is permitted
+** In state 82, looking ahead at LBRACE, shifting is permitted
 ** because of the following sub-derivation:
 
-LBRACE list(stmt) option(expr) RBRACE 
-       stmt list(stmt) 
-       expr SEMICOLON 
-       literal 
-       . STRING_VAL 
+MATCH expr LBRACE nonempty_list(match_arm) RBRACE 
+      IDENT . LBRACE loption(separated_nonempty_list(COMMA,field_init)) RBRACE 
 
-** Conflict (shift/reduce) in state 135.
-** Tokens involved: STRING_VAL OK LPAREN INT IF IDENT ERR BOOL_VAL
-** The following explanations concentrate on token STRING_VAL.
-** This state is reached from program after reading:
-
-list(import_decl) FN IDENT LPAREN loption(separated_nonempty_list(COMMA,param)) RPAREN option(__anonymous_1) LBRACE stmt
-
-** The derivations that appear below have the following common factor:
-** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
-
-program 
-list(import_decl) list(item) EOF 
-                  item list(item) 
-                  fn_decl 
-                  FN IDENT LPAREN loption(separated_nonempty_list(COMMA,param)) RPAREN option(__anonymous_1) block 
-                                                                                                             (?)
-
-** In state 135, looking ahead at STRING_VAL, reducing production
-** list(stmt) ->
+** In state 82, looking ahead at LBRACE, reducing production
+** expr -> IDENT
 ** is permitted because of the following sub-derivation:
 
-LBRACE list(stmt) option(expr) RBRACE // lookahead token appears because option(expr) can begin with STRING_VAL
-       stmt list(stmt) // lookahead token is inherited
-            . 
-
-** In state 135, looking ahead at STRING_VAL, shifting is permitted
-** because of the following sub-derivation:
-
-LBRACE list(stmt) option(expr) RBRACE 
-       stmt list(stmt) 
-            stmt list(stmt) 
-            expr SEMICOLON 
-            literal 
-            . STRING_VAL 
+MATCH expr LBRACE nonempty_list(match_arm) RBRACE // lookahead token appears
+      IDENT . 

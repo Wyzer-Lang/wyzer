@@ -20,7 +20,7 @@ fn main() {
 }
 ```
 
-Wyzer code is easy to read. There is no hidden magic. You must write exactly what you mean. For example, if a variable is a number, you must write its exact size.
+Wyzer code is easy to read. There is no hidden magic. You must write exactly what you mean. However, the compiler is smart enough to figure out the sizes of your numbers automatically!
 
 ## Running Code
 Right now, Wyzer runs through an OCaml interpreter.

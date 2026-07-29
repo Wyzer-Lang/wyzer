@@ -8,6 +8,8 @@ type base_type =
 type typ =
   | TBase of base_type
   | TResult of typ * typ
+  | TRole of typ * string
+  | TArray of typ
 [@@deriving show, eq]
 
 type binop =
@@ -17,7 +19,7 @@ type binop =
 [@@deriving show, eq]
 
 type literal =
-  | LInt of int64 * base_type
+  | LInt of int64 * base_type option
   | LBool of bool
   | LStr of string
 [@@deriving show, eq]
@@ -44,15 +46,20 @@ type expr =
   | EField of expr * string
   | EMatch of expr * (pattern * expr) list
   | EDup of string * expr
+  | ECast of expr * typ
+  | EArray of expr list
+  | EIndex of expr * expr
+  | ETransfer of expr * string
 [@@deriving show, eq]
 
 and stmt =
   | SDecl of { kind: var_kind; name: string; typ: typ option; init: expr }
-  | SAssign of string * expr
+  | SAssign of expr * expr
   | SExpr of expr
   | SWhile of expr * block
   | SFor of string * expr * block
   | SDrop of string
+  | SReturn of expr option
 [@@deriving show, eq]
 
 and block = {
@@ -67,14 +74,17 @@ type param = { name: string; typ: typ }
 type fn_decl = {
   name: string;
   params: param list;
-  ret_typ: typ;
-  body: block;
+  ret_typ: typ option;
+  role: string option;
+  is_extern: bool;
+  body: block option;
 }
 [@@deriving show, eq]
 
 type enum_member = {
   name: string;
-  const_expr: expr option;
+  explicit_val: expr option;
+  computed_val: Int64.t option ref;
 }
 [@@deriving show, eq]
 
@@ -99,6 +109,7 @@ type item =
   | IFn of fn_decl
   | IEnum of enum_decl
   | IStruct of struct_decl
+  | IGlobal of { name: string; typ: typ; init: expr }
 [@@deriving show, eq]
 
 type import_decl = {

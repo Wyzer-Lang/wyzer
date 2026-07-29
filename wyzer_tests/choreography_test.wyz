@@ -1,0 +1,14 @@
+fn send_to_server(data: u32@Server) {
+    std::io::println(data);
+}
+
+fn main() {
+    let msg: u32@Client = 42;
+    
+    // Valid: Assigning to a Server parameter causes a role transfer
+    // This immediately consumes the linear `msg` resource.
+    send_to_server(msg);
+    
+    // Invalid: Using it again should trigger a compile-time TypeError!
+    std::io::println(msg); 
+}

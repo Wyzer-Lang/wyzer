@@ -1,0 +1,15 @@
+global rx_buf: [u8]@ISR = transfer([0, 1, 2], ISR);
+
+fn handle_rx() @ ISR -> u32 {
+    rx_buf[0] = 42;
+    return 0;
+}
+
+fn main() -> u32 {
+    std::hw::bind_interrupt(1, handle_rx);
+    
+    // The typechecker should reject the following line:
+    std::io::println(rx_buf[0]);
+
+    return 0;
+}

@@ -1,1 +1,1 @@
-lib/ast.pp.ml: List Ppx_deriving_runtime
+lib/ast.pp.ml: Int64 List Ppx_deriving_runtime

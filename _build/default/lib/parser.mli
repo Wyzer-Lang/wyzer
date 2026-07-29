@@ -9,6 +9,7 @@ type token =
   | U64
   | U32
   | U16
+  | TRANSFER
   | STRUCT
   | STRING_VAL of (string)
   | STR
@@ -18,7 +19,9 @@ type token =
   | SHL
   | SEMICOLON
   | RPAREN
+  | RETURN
   | RESULT
+  | RBRACKET
   | RBRACE
   | PLUS
   | OK
@@ -29,7 +32,9 @@ type token =
   | LT
   | LPAREN
   | LET
+  | LBRACKET
   | LBRACE
+  | IOTA
   | INT of (int64)
   | IN
   | IMPORT
@@ -41,9 +46,11 @@ type token =
   | I16
   | GTE
   | GT
+  | GLOBAL
   | FOR
   | FN
   | FATARROW
+  | EXTERN
   | ERR
   | EQEQ
   | EQ

@@ -25,6 +25,12 @@ let rec free_vars_expr (e: expr) : StringSet.t =
         StringSet.union acc free_in_arm
       ) StringSet.empty arms in
       StringSet.union s1 s2
+  | ECast (e, _) -> free_vars_expr e
+  | EArray elems ->
+      List.fold_left (fun acc elem -> StringSet.union acc (free_vars_expr elem)) StringSet.empty elems
+  | EIndex (e, i) ->
+      StringSet.union (free_vars_expr e) (free_vars_expr i)
+  | ETransfer (e, _) -> free_vars_expr e
 
 and bound_vars_pat (p: pattern) : StringSet.t =
   match p with
@@ -36,11 +42,13 @@ and bound_vars_pat (p: pattern) : StringSet.t =
 and free_vars_stmt (s: stmt) : StringSet.t =
   match s with
   | SDecl { init; _ } -> free_vars_expr init
-  | SAssign (_, e) -> free_vars_expr e
+  | SAssign (lhs, e) -> StringSet.union (free_vars_expr lhs) (free_vars_expr e)
   | SExpr e -> free_vars_expr e
   | SWhile (cond, b) -> StringSet.union (free_vars_expr cond) (free_vars_block b)
   | SFor (_, e, b) -> StringSet.union (free_vars_expr e) (free_vars_block b)
   | SDrop _ -> StringSet.empty
+  | SReturn (Some e) -> free_vars_expr e
+  | SReturn None -> StringSet.empty
 
 and free_vars_block (b: block) : StringSet.t =
   let stmts_free = List.fold_left (fun acc s -> StringSet.union acc (free_vars_stmt s)) StringSet.empty b.stmts in
@@ -80,18 +88,23 @@ let rec transform_expr (live_out: StringSet.t) (e: expr) : expr =
   | EIf (cond, thn, els) ->
       EIf (transform_expr live_out cond, transform_block live_out thn, Option.map (transform_block live_out) els)
   | EMatch (match_e, arms) ->
-      let arms' = List.map (fun (pat, arm_e) -> (pat, transform_expr live_out arm_e)) arms in
-      EMatch (transform_expr live_out match_e, arms')
+      let new_arms = List.map (fun (pat, arm_e) -> (pat, transform_expr live_out arm_e)) arms in
+      EMatch (transform_expr live_out match_e, new_arms)
+  | ECast (e, t) -> ECast (transform_expr live_out e, t)
+  | EArray elems -> EArray (List.map (transform_expr live_out) elems)
+  | EIndex (e, i) -> EIndex (transform_expr live_out e, transform_expr live_out i)
+  | ETransfer (e, role) -> ETransfer (transform_expr live_out e, role)
   | _ -> e (* other expressions don't currently have reuse tags *)
 
 and transform_stmt (live_out: StringSet.t) (s: stmt) : stmt =
   match s with
   | SDecl d -> SDecl { d with init = transform_expr live_out d.init }
-  | SAssign (n, e) -> SAssign (n, transform_expr live_out e)
+  | SAssign (lhs, e) -> SAssign (transform_expr live_out lhs, transform_expr live_out e)
   | SExpr e -> SExpr (transform_expr live_out e)
   | SWhile (cond, b) -> SWhile (transform_expr live_out cond, transform_block live_out b)
   | SFor (id, e, b) -> SFor (id, transform_expr live_out e, transform_block live_out b)
   | SDrop x -> SDrop x
+  | SReturn e_opt -> SReturn (Option.map (transform_expr live_out) e_opt)
 
 and transform_block (live_out: StringSet.t) (b: block) : block =
   (* Backwards pass to compute liveness and insert drops for locally declared vars *)
@@ -134,7 +147,7 @@ and transform_block (live_out: StringSet.t) (b: block) : block =
 
 let transform_item (i: item) : item =
   match i with
-  | IFn f -> IFn { f with body = transform_block StringSet.empty f.body }
+  | IFn f -> IFn { f with body = Option.map (transform_block StringSet.empty) f.body }
   | _ -> i
 
 let transform_program (p: program) : program =

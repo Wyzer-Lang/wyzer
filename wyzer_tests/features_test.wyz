@@ -1,0 +1,26 @@
+fn test_casting() {
+    let x: i32 = 300; // 300 is larger than 255 (u8 max)
+    let y: u8 = x as u8; // Should truncate to 44
+    std::io::println(y);
+}
+
+fn test_arrays() {
+    var arr: [u32] = [10, 20, 30];
+    arr[1] = 99;
+    std::io::println(arr);
+    std::io::println(arr[1]);
+}
+
+fn test_early_return(x: bool) -> u32 {
+    if (x) {
+        return 42;
+    };
+    return 0;
+}
+
+fn main() {
+    test_casting();
+    test_arrays();
+    let res: u32 = test_early_return(true);
+    std::io::println(res);
+}
