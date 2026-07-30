@@ -134,7 +134,15 @@ let parse_format_string (s: string) : string * (Ast.expr * string) list =
   in
   parse_all 0
 
-let rec check_expr env e expected_typ_opt =
+module ExprId = struct
+  type t = Ast.expr
+  let equal (a: Ast.expr) (b: Ast.expr) = a == b
+  let hash (a: Ast.expr) = Hashtbl.hash a
+end
+module ExprMap = Hashtbl.Make(ExprId)
+let typed_ast_map : Ast.typ ExprMap.t = ExprMap.create 1024
+
+let rec check_expr_impl env e expected_typ_opt =
   match e with
   | ELit (LInt (_, t_opt)) -> 
       (match t_opt with
@@ -150,7 +158,7 @@ let rec check_expr env e expected_typ_opt =
       | Some (_, _, Consumed) -> raise (TypeError ("Variable " ^ name ^ " has already been consumed"))
       | Some (t, is_mut, Live) ->
           let var_role = match t with | TRole (_, r) -> r | _ -> "Main" in
-          if var_role <> "Global" && var_role <> env.current_role then
+          if var_role <> "Global" && var_role <> env.current_role && env.current_role <> "Poly" then
             raise (TypeError (Printf.sprintf "Cannot access variable %s belonging to role %s from role %s" name var_role env.current_role));
           let new_vars = match t with
             | TRole _ -> StringMap.add name (t, is_mut, Consumed) env.vars
@@ -161,7 +169,7 @@ let rec check_expr env e expected_typ_opt =
           (match StringMap.find_opt name env.globals with
           | Some t ->
               let var_role = match t with | TRole (_, r) -> r | _ -> "Main" in
-              if var_role <> "Global" && var_role <> env.current_role then
+              if var_role <> "Global" && var_role <> env.current_role && env.current_role <> "Poly" then
                 raise (TypeError (Printf.sprintf "Cannot access global %s belonging to role %s from role %s" name var_role env.current_role));
               t, env
           | None -> raise (TypeError ("Undefined variable: " ^ name))))
@@ -529,6 +537,20 @@ let rec check_expr env e expected_typ_opt =
       else
         (TRole (base_t, role), env_with_trace)
   | EDup (_, e) -> check_expr env e None
+  | ETyped (inner, t) ->
+      let _, env' = check_expr env inner (Some t) in
+      (t, env')
+  | ENetSend (_, inner) ->
+      let _, env' = check_expr env inner None in
+      (TBase TUnit, env')
+  | ENetRecv _ ->
+      (* EPP handles types dynamically, just return Unit here to satisfy exhaustiveness *)
+      (TBase TUnit, env)
+
+and check_expr env e expected_typ_opt =
+  let (t, env') = check_expr_impl env e expected_typ_opt in
+  ExprMap.replace typed_ast_map e t;
+  (t, env')
 
 and check_stmt env stmt =
   match stmt with
@@ -565,7 +587,7 @@ and check_stmt env stmt =
               | Some t_var ->
                   let t_e, env1 = check_expr env e (Some t_var) in
                   let global_role = match t_var with | TRole (_, r) -> r | _ -> "Main" in
-                  if global_role <> env1.current_role then raise (TypeError ("Cannot access global " ^ name ^ " from role " ^ env1.current_role));
+                  if global_role <> env1.current_role && env1.current_role <> "Poly" then raise (TypeError ("Cannot access global " ^ name ^ " from role " ^ env1.current_role));
                   if not (types_compatible t_var t_e) then raise (TypeError "Assignment type mismatch");
                   env1
               | None -> raise (TypeError ("Undefined variable in assignment: " ^ name))))

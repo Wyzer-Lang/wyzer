@@ -63,7 +63,11 @@ type env = {
   funcs: fn_decl StringMap.t;
   enums: enum_decl StringMap.t;
   imports: string list StringMap.t;
+  current_role: string;
 }
+
+let ipc_send_counter = ref 0
+let ipc_recv_counter = ref 0
 
 let empty_env = {
   vars = StringMap.empty;
@@ -71,6 +75,7 @@ let empty_env = {
   funcs = StringMap.empty;
   enums = StringMap.empty;
   imports = StringMap.empty;
+  current_role = "Poly";
 }
 
 exception EvalError of string
@@ -349,6 +354,38 @@ let rec eval_expr env e =
   | EFormatStr (s_ref, parsed_ref) ->
       let evaled_rest = List.map (fun (e_inner, lit) -> (eval_expr env e_inner, lit)) !parsed_ref in
       VFormatStr (!s_ref, evaled_rest)
+  | ETyped (e, _) -> eval_expr env e
+  | ENetSend (dest_role, e) ->
+      let v = eval_expr env e in
+      let my_role = env.current_role in
+      let msg_id = !ipc_send_counter in
+      ipc_send_counter := !ipc_send_counter + 1;
+      let fn = Printf.sprintf "/tmp/wyzer_ipc_%s_%s_%d" my_role dest_role msg_id in
+      let oc = open_out fn in
+      Marshal.to_channel oc v [];
+      close_out oc;
+      Printf.printf "[IPC] %s sent msg_%d to %s\n%!" my_role msg_id dest_role;
+      v
+  | ENetRecv source_role ->
+      let my_role = env.current_role in
+      let msg_id = !ipc_recv_counter in
+      ipc_recv_counter := !ipc_recv_counter + 1;
+      let fn = Printf.sprintf "/tmp/wyzer_ipc_%s_%s_%d" source_role my_role msg_id in
+      Printf.printf "[IPC] %s waiting for msg_%d from %s...\n%!" my_role msg_id source_role;
+      let rec wait () =
+        if Sys.file_exists fn then (
+           let ic = open_in fn in
+           let v = Marshal.from_channel ic in
+           close_in ic;
+           Sys.remove fn;
+           Printf.printf "[IPC] %s received msg_%d from %s\n%!" my_role msg_id source_role;
+           v
+        ) else (
+           Unix.sleepf 0.1;
+           wait ()
+        )
+      in
+      wait ()
   | EMethodCall _ -> raise (EvalError "EMethodCall not desugared")
 
 and eval_stmt env stmt =
@@ -451,8 +488,9 @@ let build_env prog =
   in
   List.fold_left eval_item env_with_imports prog.Ast.items
 
-let eval_program prog =
+let eval_program prog role =
   let env = build_env prog in
+  let env = { env with current_role = role } in
   match StringMap.find_opt "main" env.funcs with
   | Some main_fn ->
       (try ignore (eval_block env (Option.get main_fn.body)) with Return _ -> ())

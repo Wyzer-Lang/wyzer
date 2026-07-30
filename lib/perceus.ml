@@ -35,6 +35,9 @@ let rec free_vars_expr (e: expr) : StringSet.t =
   | EFormatStr (_, parsed_ref) ->
       List.fold_left (fun acc (e_inner, _) -> StringSet.union acc (free_vars_expr e_inner)) StringSet.empty !parsed_ref
   | ETransfer (e, _) -> free_vars_expr e
+  | ETyped (e, _) -> free_vars_expr e
+  | ENetSend (_, e) -> free_vars_expr e
+  | ENetRecv _ -> StringSet.empty
   | EMethodCall _ -> failwith "EMethodCall should have been desugared by Comptime"
 
 and bound_vars_pat (p: pattern) : StringSet.t =
@@ -104,6 +107,10 @@ let rec transform_expr (live_out: StringSet.t) (e: expr) : expr =
   | EFormatStr (s_ref, parsed_ref) ->
       let new_parsed = List.map (fun (e_inner, lit) -> (transform_expr live_out e_inner, lit)) !parsed_ref in
       EFormatStr (s_ref, ref new_parsed)
+  | ETyped (e, t) -> ETyped (transform_expr live_out e, t)
+  | ENetSend (r, e) -> ENetSend (r, transform_expr live_out e)
+  | ENetRecv r -> ENetRecv r
+  | EMethodCall _ -> failwith "EMethodCall should have been desugared"
   | _ -> e (* other expressions don't currently have reuse tags *)
 
 and transform_stmt (live_out: StringSet.t) (s: stmt) : stmt =

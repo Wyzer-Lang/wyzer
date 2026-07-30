@@ -39,7 +39,7 @@ let process_file filename =
     | None -> prog_comptime
     in
     let prog_transformed = Perceus.transform_program prog_to_run in
-    Eval.eval_program prog_transformed
+    Eval.eval_program prog_transformed (Option.value !target_role_opt ~default:"Poly")
   with
   | Typechecker.TypeError msg ->
       fprintf stderr "Type Error: %s\n" msg;

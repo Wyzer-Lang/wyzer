@@ -62,6 +62,9 @@ type expr =
   | EFormatStr of string ref * (expr * string) list ref
   | EGenericApp of typ list * expr
   | EMethodCall of expr * string * expr list * string option ref
+  | ETyped of expr * typ
+  | ENetSend of string * expr
+  | ENetRecv of string
 [@@deriving show, eq]
 
 and stmt =

@@ -1,0 +1,15 @@
+role @Client;
+role @Server;
+
+fn main() {
+    let x: i32@Client = 10;
+    
+    // Knowledge of Choice test
+    if x > 5 {
+        let msg: str@Server = "Branch 1: x was greater than 5!";
+        std::io::println(msg);
+    } else {
+        let msg: str@Server = "Branch 2: x was less or equal!";
+        std::io::println(msg);
+    }
+}

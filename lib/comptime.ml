@@ -45,6 +45,9 @@ let rec transform_expr env e =
   | EFormatStr (s_ref, parsed_ref) ->
       let new_parsed = List.map (fun (e_inner, lit) -> (transform_expr env e_inner, lit)) !parsed_ref in
       EFormatStr (s_ref, ref new_parsed)
+  | ETyped (inner, t) -> ETyped (transform_expr env inner, t)
+  | ENetSend (r, inner) -> ENetSend (r, transform_expr env inner)
+  | ENetRecv r -> ENetRecv r
   | ELit _ | EVar _ | EPathVar _ -> e
 
 and transform_stmt env s =
