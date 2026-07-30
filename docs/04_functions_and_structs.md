@@ -40,3 +40,26 @@ fn main() {
 ```
 
 *Note: Structs are managed safely by Wyzer's automatic memory system.*
+
+## Visibility Modifiers (`pub`)
+In Wyzer, privacy is strictly enforced by default. All functions, structs, and enums are completely private and hidden from other files/modules.
+
+To expose them to other parts of your codebase, you must explicitly mark them as public using the `pub` keyword:
+
+```wyzer
+// This is exposed to the world
+pub fn add(a: u32, b: u32) -> u32 {
+    a + b
+}
+
+// This struct can be imported by other files
+pub struct Point {
+    x: u32,
+    y: u32
+}
+
+// This remains strictly private to this file
+fn calculate_secret() -> u32 {
+    42
+}
+```

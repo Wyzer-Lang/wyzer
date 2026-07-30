@@ -80,6 +80,7 @@ type param = { name: string; typ: typ }
 [@@deriving show, eq]
 
 type fn_decl = {
+  is_pub: bool;
   name: string;
   params: param list;
   ret_typ: typ option;
@@ -102,6 +103,7 @@ type enum_member = {
 [@@deriving show, eq]
 
 type enum_decl = {
+  is_pub: bool;
   name: string;
   base_typ: base_type;
   iota_expr: expr;
@@ -113,6 +115,7 @@ type field = { name: string; typ: typ }
 [@@deriving show, eq]
 
 type struct_decl = {
+  is_pub: bool;
   name: string;
   fields: field list;
 }
@@ -120,6 +123,7 @@ type struct_decl = {
 
 type role_decl = {
   name: string;
+  properties: (string * expr) list;
 }
 [@@deriving show, eq]
 
@@ -127,7 +131,7 @@ type item =
   | IFn of fn_decl
   | IEnum of enum_decl
   | IStruct of struct_decl
-  | IGlobal of { name: string; typ: typ; init: expr }
+  | IGlobal of { is_pub: bool; name: string; typ: typ; init: expr }
   | IGeneric of string list * item
   | IRole of role_decl
 [@@deriving show, eq]

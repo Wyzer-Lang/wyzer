@@ -13,6 +13,16 @@ role @Server;
 role @Sensor;
 ```
 
+### Physical Transports
+If you know exactly what hardware is running these roles, you can pass physical configuration properties to the role declaration. The compiler verifies these properties at compile-time:
+
+```wyzer
+role @Sensor { 
+    transport: "I2C", 
+    address: 0x48 
+}
+```
+
 ## Writing Functions for Different Computers
 
 When you write a function, you can tell Wyzer exactly which computer should run it using the `@` symbol.
@@ -27,6 +37,17 @@ fn get_temperature() @ Sensor -> u32 {
 fn main() @ Server {
     // How do we get the temperature from the Sensor?
 }
+
+### Role Inference (Zero-Cost Polymorphism)
+What if you want to write a utility function that works on *any* node? If you omit the `@Role` annotation, the compiler automatically infers it as `"Poly"`. 
+
+```wyzer
+// This can safely run on Server, Sensor, or Client!
+fn add(a: u32, b: u32) -> u32 {
+    a + b
+}
+```
+When the `Server` calls a `"Poly"` function, the return type is seamlessly and automatically cast into the `Server`'s memory without needing a `transfer()`! The compiler guarantees the `"Poly"` function cannot directly access any node-specific globals.
 ```
 
 ## The Magic of the Compiler
@@ -70,3 +91,35 @@ fn main() @ Server {
 ```
 
 It is that simple! You just built a distributed system across two computers without writing a single line of networking code.
+
+## Knowledge of Choice (Deadlock Prevention)
+
+Because network messages require two computers to participate (one sending, one receiving), branching control flow can cause dangerous deadlocks.
+
+```wyzer
+fn main() @ Server {
+    if condition {
+        transfer(42, Client);
+    } else {
+        // ERROR: Client is unaware of the condition and will deadlock waiting!
+    }
+}
+```
+
+Wyzer strictly enforces **Choreographic Trace Equivalence**. When you use an `if` expression, the typechecker computes the exact footprint of all network `transfer` operations inside both the `then` and `else` branches. If they do not match exactly, the compiler throws an `Asymmetric Choreography` error, forcing you to write code that ensures all nodes are correctly synchronized!
+
+## Endpoint Projection (Compilation)
+
+When you are ready to deploy your code, how do you compile a single file into two separate binaries for two different computers?
+
+You use the `--role` flag!
+
+```bash
+# Compiles and runs ONLY the Server code
+wyzerc -- my_file.wyz --role Server
+
+# Compiles and runs ONLY the Client code
+wyzerc -- my_file.wyz --role Client
+```
+
+When you pass this flag, the Wyzer compiler actively splits your single AST, completely stripping away all functions and variables belonging to other roles, leaving a perfectly optimized standalone binary for that specific physical computer.

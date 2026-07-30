@@ -25,6 +25,7 @@ type token =
   | RESULT
   | RBRACKET
   | RBRACE
+  | PUB
   | PLUS
   | OR
   | OK

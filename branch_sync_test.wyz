@@ -1,0 +1,13 @@
+role @Server;
+role @Client;
+
+fn main() @ Server {
+    let condition = true;
+    if condition {
+        // We transfer to Client here
+        let x = transfer(42, Client);
+    } else {
+        // We DO NOT transfer to Client here!
+        // Client will deadlock waiting for the number if 'condition' is false.
+    }
+}

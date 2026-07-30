@@ -14,6 +14,7 @@ rule read = parse
   | newline { Lexing.new_line lexbuf; read lexbuf }
   | "//" [^ '\n']* { read lexbuf }
   | "fn" { FN }
+  | "pub" { PUB }
   | "enum" { ENUM }
   | "import" { IMPORT }
   | "as" { AS }

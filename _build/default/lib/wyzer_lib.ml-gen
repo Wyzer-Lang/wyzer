@@ -15,5 +15,8 @@ module Parser = Wyzer_lib__Parser
 (** @canonical Wyzer_lib.Perceus *)
 module Perceus = Wyzer_lib__Perceus
 
+(** @canonical Wyzer_lib.Projection *)
+module Projection = Wyzer_lib__Projection
+
 (** @canonical Wyzer_lib.Typechecker *)
 module Typechecker = Wyzer_lib__Typechecker

@@ -1,0 +1,14 @@
+role @Client;
+role @Server { transport: "UART" }
+
+// This function has no @Role!
+// It is role-polymorphic. It should be callable by ANY role.
+fn calculate(x: u32, y: u32) -> u32 {
+    let result = x + y;
+    return result;
+}
+
+fn main() @ Server {
+    // Server can call a polymorphic function natively without transfer!
+    let data: u32 = calculate(10, 20);
+}

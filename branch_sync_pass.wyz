@@ -1,0 +1,13 @@
+role @Server;
+role @Client;
+
+fn main() @ Server {
+    let condition = true;
+    if condition {
+        // Transfer to Client
+        let x = transfer(42, Client);
+    } else {
+        // Also transfer to Client!
+        let x = transfer(100, Client);
+    }
+}

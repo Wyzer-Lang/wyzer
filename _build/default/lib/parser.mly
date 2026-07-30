@@ -7,7 +7,7 @@ open Ast
 %token <string> STRING_VAL
 %token <string> IDENT
 
-%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA GENERIC ROLE
+%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA GENERIC ROLE PUB
 %token U8 U16 U32 U64 USIZE I8 I16 I32 I64 ISIZE BOOL STR
 %token PLUS MINUS STAR SLASH SHL SHR BITAND BITOR AND OR NOT
 %token EQEQ NEQ LT GT LTE GTE EQ FATARROW
@@ -32,6 +32,10 @@ open Ast
 %start <Ast.program> program
 %%
 
+%inline visibility:
+  | PUB { true }
+  | /* empty */ { false }
+
 program:
   | imports=list(import_decl) items=list(item) EOF { { imports; items } }
 
@@ -46,21 +50,22 @@ item:
   | f=fn_decl { IFn f }
   | e=enum_decl { IEnum e }
   | s=struct_decl { IStruct s }
-  | GLOBAL name=IDENT COLON t=typ EQ init=expr SEMICOLON { IGlobal { name; typ = t; init } }
-  | ROLE AT id=IDENT SEMICOLON { IRole { name = id } }
+  | v=visibility GLOBAL name=IDENT COLON t=typ EQ init=expr SEMICOLON { IGlobal { is_pub = v; name; typ = t; init } }
+  | ROLE AT id=IDENT SEMICOLON { IRole { name = id; properties = [] } }
+  | ROLE AT id=IDENT LBRACE props=separated_list(COMMA, field_init) RBRACE { IRole { name = id; properties = props } }
   | GENERIC LT params=separated_nonempty_list(COMMA, IDENT) GT i=item { IGeneric (params, i) }
 
 struct_decl:
-  | STRUCT name=IDENT LBRACE fields=separated_list(COMMA, field) RBRACE { { name; fields } }
+  | v=visibility STRUCT name=IDENT LBRACE fields=separated_list(COMMA, field) RBRACE { { is_pub = v; name; fields } }
 
 field:
   | name=IDENT COLON typ=typ { ({ name; typ } : Ast.field) }
 
 fn_decl:
-  | EXTERN FN name=IDENT LPAREN params=separated_list(COMMA, param) RPAREN role=option(AT r=IDENT {r}) ret=option(MINUS GT t=typ {t}) SEMICOLON
-    { { name; params; ret_typ = ret; role; is_extern = true; body = None } }
-  | FN name=IDENT LPAREN params=separated_list(COMMA, param) RPAREN role=option(AT r=IDENT {r}) ret=option(MINUS GT t=typ {t}) b=block
-    { { name; params; ret_typ = ret; role; is_extern = false; body = Some b } }
+  | v=visibility EXTERN FN name=IDENT LPAREN params=separated_list(COMMA, param) RPAREN role=option(AT r=IDENT {r}) ret=option(MINUS GT t=typ {t}) SEMICOLON
+    { { is_pub = v; name; params; ret_typ = ret; role; is_extern = true; body = None } }
+  | v=visibility FN name=IDENT LPAREN params=separated_list(COMMA, param) RPAREN role=option(AT r=IDENT {r}) ret=option(MINUS GT t=typ {t}) b=block
+    { { is_pub = v; name; params; ret_typ = ret; role; is_extern = false; body = Some b } }
 
 param:
   | name=IDENT COLON typ=typ { ({ name; typ } : Ast.param) }
@@ -81,8 +86,8 @@ base_type:
   | GENERIC LT args=separated_nonempty_list(COMMA, typ) GT t=base_type { TGenericApp (args, t) }
 
 enum_decl:
-  | ENUM name=IDENT COLON base_typ=base_type LPAREN iota_expr=expr RPAREN LBRACE members=separated_list(COMMA, enum_member) RBRACE
-    { { name; base_typ; iota_expr; members } }
+  | v=visibility ENUM name=IDENT COLON base_typ=base_type LPAREN iota_expr=expr RPAREN LBRACE members=separated_list(COMMA, enum_member) RBRACE
+    { { is_pub = v; name; base_typ; iota_expr; members } }
 
 override:
   | AT_EQ e=expr { (Ast.IotaOverride, e) }

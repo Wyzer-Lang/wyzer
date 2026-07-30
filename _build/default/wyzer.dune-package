@@ -11,6 +11,7 @@
    lib/parser.ml
    lib/parser.mli
    lib/perceus.ml
+   lib/projection.ml
    lib/typechecker.ml
    lib/wyzer_lib.a
    lib/wyzer_lib.cma
@@ -35,6 +36,9 @@
    lib/wyzer_lib__Perceus.cmi
    lib/wyzer_lib__Perceus.cmt
    lib/wyzer_lib__Perceus.cmx
+   lib/wyzer_lib__Projection.cmi
+   lib/wyzer_lib__Projection.cmt
+   lib/wyzer_lib__Projection.cmx
    lib/wyzer_lib__Typechecker.cmi
    lib/wyzer_lib__Typechecker.cmt
    lib/wyzer_lib__Typechecker.cmx
@@ -84,6 +88,10 @@
       (obj_name wyzer_lib__Perceus)
       (visibility public)
       (source (path Perceus) (impl (path lib/perceus.ml))))
+     (module
+      (obj_name wyzer_lib__Projection)
+      (visibility public)
+      (source (path Projection) (impl (path lib/projection.ml))))
      (module
       (obj_name wyzer_lib__Typechecker)
       (visibility public)

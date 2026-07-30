@@ -1,0 +1,14 @@
+role @Server;
+role @Client;
+
+fn main() @ Server {
+    var my_data = 100;
+    
+    // Server transfers 'my_data' to Client.
+    // Because Wyzer's memory model is linear, 'my_data' is CONSUMED by this transfer.
+    let x = transfer(my_data, Client);
+
+    // If Server tries to mutate 'my_data' after transferring it, it will cause a Data Race!
+    // But Wyzer's typechecker catches this at compile time.
+    my_data = 200; // Type Error: Consumed variable!
+}

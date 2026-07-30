@@ -1,0 +1,23 @@
+pub fn public_func() {
+    std::io::println("This is public!");
+}
+
+fn private_func() {
+    std::io::println("This is private!");
+}
+
+pub struct MyStruct {
+    x: u32
+}
+
+pub enum State: u8 (0) {
+    ON,
+    OFF
+}
+
+pub global MAGIC_NUMBER: u32 = 42u32;
+
+fn main() {
+    public_func();
+    private_func();
+}

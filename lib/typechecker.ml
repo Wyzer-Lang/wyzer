@@ -16,6 +16,7 @@ type env = {
   current_role: string;
   active_targs: typ list option;
   roles: unit StringMap.t;
+  trace: (string * typ) list;
 }
 
 let empty_env = {
@@ -30,6 +31,7 @@ let empty_env = {
   current_role = "Global";
   active_targs = None;
   roles = StringMap.add "Main" () (StringMap.add "Global" () StringMap.empty);
+  trace = [];
 }
 
 exception TypeError of string
@@ -88,7 +90,7 @@ let rec types_compatible expected actual =
       let c2 = (a2 = TBase (TCustom "_") || types_compatible e2 a2) in
       c1 && c2
   | TRole (t_exp, r_exp), TRole (t_act, r_act) ->
-      if r_exp = r_act then types_compatible t_exp t_act else false
+      if r_exp = r_act || r_act = "Poly" || r_exp = "Poly" then types_compatible t_exp t_act else false
   | TRole (t_exp, _), t_act ->
       types_compatible t_exp t_act
   | t_exp, TRole (t_act, _) ->
@@ -262,13 +264,21 @@ let rec check_expr env e expected_typ_opt =
       let t_cond, env1 = check_expr env cond (Some (TBase TBool)) in
       if not (is_bool_type t_cond) then raise (TypeError "if condition must be bool");
       let env_thn, t_thn = check_block env1 thn in
+      let len_old = List.length env1.trace in
+      let rec drop n lst = if n <= 0 then lst else match lst with [] -> [] | _::t -> drop (n - 1) t in
+      let trace_thn = drop len_old env_thn.trace in
       (match els with
       | Some e_block ->
-          let _env_els, t_els = check_block env1 e_block in
+          let env_els, t_els = check_block env1 e_block in
+          let trace_els = drop len_old env_els.trace in
+          if trace_thn <> trace_els then
+            raise (TypeError "Asymmetric choreography: 'if' and 'else' branches must have identical transfer footprints");
           if not (types_compatible (Option.value t_thn ~default:(TBase TUnit)) (Option.value t_els ~default:(TBase TUnit))) then 
             raise (TypeError "if and else branches must have same return type");
-          Option.value t_thn ~default:(TBase TU8), env_thn
+          Option.value t_thn ~default:(TBase TU8), { env_els with vars = env_thn.vars }
       | None ->
+          if trace_thn <> [] then
+            raise (TypeError "Asymmetric choreography: 'if' without 'else' cannot contain 'transfer' operations");
           if t_thn <> None then raise (TypeError "if without else cannot return a value");
           Option.value t_thn ~default:(TBase TUnit), env_thn)
   | EStruct (name, fields, _) ->
@@ -395,7 +405,8 @@ let rec check_expr env e expected_typ_opt =
         | TRole (inner, _) -> inner
         | _ -> t_e
       in
-      (TRole (base_t, role), env1)
+      let env_with_trace = { env1 with trace = env1.trace @ [(role, base_t)] } in
+      (TRole (base_t, role), env_with_trace)
   | EDup (_, e) -> check_expr env e None
 
 and check_stmt env stmt =
@@ -470,22 +481,23 @@ and check_stmt env stmt =
       let env2, _ = check_block env_for b in
       env2
   | SReturn e_opt ->
+      let env1 = match e_opt, env.ret_typ with
+      | Some e, Some expected_t ->
+          let t_e, env_next = check_expr env e (Some expected_t) in
+          let expected_t = add_role_if_missing expected_t env.current_role in
+          if not (types_compatible expected_t t_e) then raise (TypeError "Return type mismatch");
+          env_next
+      | None, None -> env
+      | Some _, None -> raise (TypeError "Cannot return a value from a unit function")
+      | None, Some _ -> raise (TypeError "Function must return a value")
+      in
       StringMap.iter (fun name (t, _, state) ->
         match t with
         | TRole _ when state = Live -> 
             raise (TypeError ("Cannot return early with unconsumed linear resource: " ^ name))
         | _ -> ()
-      ) env.vars;
-      (match e_opt, env.ret_typ with
-      | Some e, Some expected_t ->
-          let t_e, env1 = check_expr env e (Some expected_t) in
-          if not (types_compatible expected_t t_e) then raise (TypeError "Return type mismatch");
-          env1
-      | None, Some expected_t ->
-          if not (types_compatible expected_t (TBase TUnit) || expected_t = TBase TU8) then raise (TypeError "Return expects a value");
-          env
-      | Some _, None -> raise (TypeError "Cannot return a value from a unit function")
-      | None, None -> env)
+      ) env1.vars;
+      env1
   | SDrop x ->
       if not (StringMap.mem x env.vars) then raise (TypeError ("Cannot drop undefined variable: " ^ x));
       env
@@ -500,10 +512,11 @@ and check_block env block =
       env_final, None
 
 let check_fn_decl env (fn: Ast.fn_decl) =
+  let role_str = Option.value fn.role ~default:"Poly" in
   let initial_vars = List.fold_left (fun acc (p: Ast.param) ->
-    StringMap.add p.name (p.typ, false, Live) acc
+    let p_typ_with_role = add_role_if_missing p.typ role_str in
+    StringMap.add p.name (p_typ_with_role, false, Live) acc
   ) StringMap.empty fn.params in
-  let role_str = Option.value fn.role ~default:"Main" in
   let local_env = { env with vars = initial_vars; ret_typ = fn.ret_typ; current_role = role_str } in
   (match fn.body with
    | Some b -> let _ = check_block local_env b in ()
@@ -558,7 +571,7 @@ let check_item env item =
       { env with enums = StringMap.add e.name e env.enums }
   | IStruct s ->
       { env with structs = StringMap.add s.name s env.structs }
-  | IGlobal { name; typ = expected_t; init } ->
+  | IGlobal { is_pub = _; name; typ = expected_t; init } ->
       let t_init, _ = check_expr env init None in
       if not (types_compatible expected_t t_init) then raise (TypeError ("Type mismatch in global " ^ name));
       { env with globals = StringMap.add name expected_t env.globals }
@@ -572,6 +585,12 @@ let check_item env item =
       in
       { env with generic_items = StringMap.add name (params, i) env.generic_items }
   | IRole r ->
+      List.iter (fun (k, e) ->
+        let _, _ = check_expr env e None in
+        match e with
+        | ELit _ -> ()
+        | _ -> raise (TypeError ("Role property " ^ k ^ " must be a constant literal"))
+      ) r.properties;
       { env with roles = StringMap.add r.name () env.roles }
 
 let check_program prog =

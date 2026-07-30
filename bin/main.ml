@@ -24,7 +24,20 @@ let process_file filename =
   
   try
     let _ = Typechecker.check_program prog in
-    let prog_transformed = Perceus.transform_program prog in
+    let target_role_opt = ref None in
+    let filename_idx = ref 1 in
+    for i = 1 to Array.length Sys.argv - 1 do
+      if Sys.argv.(i) = "--role" && i + 1 < Array.length Sys.argv then (
+        target_role_opt := Some Sys.argv.(i+1);
+      ) else if Sys.argv.(i) <> "--role" && (i = 1 || Sys.argv.(i-1) <> "--role") then (
+        filename_idx := i
+      )
+    done;
+    let prog_to_run = match !target_role_opt with
+    | Some r -> Projection.project_program prog r
+    | None -> prog
+    in
+    let prog_transformed = Perceus.transform_program prog_to_run in
     Eval.eval_program prog_transformed
   with
   | Typechecker.TypeError msg ->
@@ -36,7 +49,16 @@ let process_file filename =
 
 let () =
   if Array.length Sys.argv < 2 then (
-    fprintf stderr "Usage: %s <file.wyz>\n" Sys.argv.(0);
+    fprintf stderr "Usage: %s <file.wyz> [--role <RoleName>]\n" Sys.argv.(0);
     exit 1
-  ) else
-    process_file Sys.argv.(1)
+  );
+  let filename = ref "" in
+  for i = 1 to Array.length Sys.argv - 1 do
+    if Sys.argv.(i) <> "--role" && (i = 1 || Sys.argv.(i-1) <> "--role") then
+      filename := Sys.argv.(i)
+  done;
+  if !filename = "" then (
+    fprintf stderr "Usage: %s <file.wyz> [--role <RoleName>]\n" Sys.argv.(0);
+    exit 1
+  );
+  process_file !filename

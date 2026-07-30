@@ -1,0 +1,13 @@
+role @Client;
+role @Server;
+
+fn get_data() @ Client -> u32 {
+    std::io::println("Client gets data");
+    return 42u32;
+}
+
+fn main() @ Server {
+    std::io::println("Server is starting!");
+    // We won't actually call get_data() because we haven't implemented networking yet.
+    // If we projected to Server, get_data won't even exist in the AST!
+}
