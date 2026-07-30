@@ -92,21 +92,47 @@ fn main() @ Server {
 
 It is that simple! You just built a distributed system across two computers without writing a single line of networking code.
 
-## Knowledge of Choice (Deadlock Prevention)
+## Knowledge of Choice (Automatic Branch Synchronization)
 
 Because network messages require two computers to participate (one sending, one receiving), branching control flow can cause dangerous deadlocks.
 
 ```wyzer
-fn main() @ Server {
-    if condition {
-        transfer(42, Client);
+fn main() {
+    let x: u32@Client = 10;
+    
+    if x > 5 {
+        // The condition belongs to the Client!
+        let msg: str@Server = "Greater than 5!";
+        std::io::println(msg);
     } else {
-        // ERROR: Client is unaware of the condition and will deadlock waiting!
+        let msg: str@Server = "Less than or equal to 5!";
+        std::io::println(msg);
     }
 }
 ```
 
-Wyzer strictly enforces **Choreographic Trace Equivalence**. When you use an `if` expression, the typechecker computes the exact footprint of all network `transfer` operations inside both the `then` and `else` branches. If they do not match exactly, the compiler throws an `Asymmetric Choreography` error, forcing you to write code that ensures all nodes are correctly synchronized!
+In other systems, the `Server` would deadlock because it doesn't know the value of `x` (which is stored on the `Client`) and wouldn't know which branch to execute.
+
+Wyzer solves this through **Knowledge of Choice**. During Endpoint Projection (EPP), the compiler detects that the `Client` is making a choice that affects the `Server`. Wyzer will **automatically inject** hidden network messages into the AST!
+
+When compiled for `Client`, the `if/else` block will automatically prepend a network send:
+```wyzer
+    if x > 5 {
+        std::net::send(Server, true);
+    } else {
+        std::net::send(Server, false);
+    }
+```
+When compiled for `Server`, the entire condition is erased and replaced by a network receive, dynamically routing the Server to the correct block:
+```wyzer
+    if std::net::recv(Client) {
+        let msg = "Greater than 5!";
+        std::io::println(msg);
+    } else {
+        let msg = "Less than or equal to 5!";
+        std::io::println(msg);
+    }
+```
 
 ## Endpoint Projection (Compilation)
 
@@ -122,4 +148,4 @@ wyzerc -- my_file.wyz --role Server
 wyzerc -- my_file.wyz --role Client
 ```
 
-When you pass this flag, the Wyzer compiler actively splits your single AST, completely stripping away all functions and variables belonging to other roles, leaving a perfectly optimized standalone binary for that specific physical computer.
+When you pass this flag, the Wyzer compiler uses its type-aware **Endpoint Projection (EPP)** engine. It actively splits your single AST, completely stripping away all variables, function calls, and expressions belonging to other roles. It then safely replaces all `transfer` boundaries with physical `ENetSend` and `ENetRecv` operations, leaving perfectly optimized standalone binaries for each specific physical computer.
