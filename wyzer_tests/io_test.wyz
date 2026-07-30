@@ -1,0 +1,27 @@
+fn main() {
+    let name = "Wyzer";
+    let version = 1;
+    
+    // Test basic printing
+    std::io::print("Hello ");
+    std::io::println(name);
+    
+    // Re-create name since linear types consume variables!
+    let name2 = "Wyzer";
+    
+    // Test formatting interpolation
+    std::io::println(f"Welcome to {name2} version {version}!");
+    
+    // Re-create again
+    let name3 = "Wyzer";
+    
+    // Test standard error
+    std::io::eprintln(f"This is an error from {name3}!");
+    
+    // Test standard streams
+    let out = std::io::stdout;
+    let err = std::io::stderr;
+    
+    // In actual Wyzer code, they would call `out.write(...)` if traits were fully set up,
+    // but for now, we just ensure they typecheck as Stream handles.
+}

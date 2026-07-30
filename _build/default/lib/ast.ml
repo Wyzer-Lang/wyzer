@@ -34,6 +34,7 @@ type pattern =
   | PWildcard
   | PIdent of string
   | PVariant of string * pattern list option
+  | PLit of literal
 [@@deriving show, eq]
 
 type var_kind = VLet | VVar | VConst
@@ -42,6 +43,7 @@ type var_kind = VLet | VVar | VConst
 type expr =
   | ELit of literal
   | EVar of string
+  | EPathVar of string list
   | ECall of string * expr list
   | EPathCall of string list * expr list
   | EUnOp of unop * expr
@@ -57,7 +59,9 @@ type expr =
   | EArray of expr list
   | EIndex of expr * expr
   | ETransfer of expr * string
+  | EFormatStr of string ref * (expr * string) list ref
   | EGenericApp of typ list * expr
+  | EMethodCall of expr * string * expr list * string option ref
 [@@deriving show, eq]
 
 and stmt =
@@ -90,6 +94,13 @@ type fn_decl = {
 }
 [@@deriving show, eq]
 
+type fn_sig = {
+  name: string;
+  params: param list;
+  ret_typ: typ option;
+}
+[@@deriving show, eq]
+
 type override_kind =
   | IotaOverride
   | ValueOverride
@@ -97,6 +108,7 @@ type override_kind =
 
 type enum_member = {
   name: string;
+  payload: typ list;
   override: (override_kind * expr) option;
   computed_val: int64 option ref;
 }
@@ -127,6 +139,20 @@ type role_decl = {
 }
 [@@deriving show, eq]
 
+type trait_decl = {
+  is_pub: bool;
+  name: string;
+  methods: fn_sig list;
+}
+[@@deriving show, eq]
+
+type impl_decl = {
+  trait_name: string;
+  for_typ: typ;
+  methods: fn_decl list;
+}
+[@@deriving show, eq]
+
 type item =
   | IFn of fn_decl
   | IEnum of enum_decl
@@ -134,6 +160,8 @@ type item =
   | IGlobal of { is_pub: bool; name: string; typ: typ; init: expr }
   | IGeneric of string list * item
   | IRole of role_decl
+  | ITrait of trait_decl
+  | IImpl of impl_decl
 [@@deriving show, eq]
 
 type import_decl = {

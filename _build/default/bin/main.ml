@@ -24,6 +24,7 @@ let process_file filename =
   
   try
     let _ = Typechecker.check_program prog in
+    let prog_comptime = Comptime.transform_program prog in
     let target_role_opt = ref None in
     let filename_idx = ref 1 in
     for i = 1 to Array.length Sys.argv - 1 do
@@ -34,8 +35,8 @@ let process_file filename =
       )
     done;
     let prog_to_run = match !target_role_opt with
-    | Some r -> Projection.project_program prog r
-    | None -> prog
+    | Some r -> Projection.project_program prog_comptime r
+    | None -> prog_comptime
     in
     let prog_transformed = Perceus.transform_program prog_to_run in
     Eval.eval_program prog_transformed

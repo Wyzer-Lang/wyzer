@@ -6,6 +6,7 @@
   (META
    dune-package
    lib/ast.ml
+   lib/comptime.ml
    lib/eval.ml
    lib/lexer.ml
    lib/parser.ml
@@ -23,6 +24,9 @@
    lib/wyzer_lib__Ast.cmi
    lib/wyzer_lib__Ast.cmt
    lib/wyzer_lib__Ast.cmx
+   lib/wyzer_lib__Comptime.cmi
+   lib/wyzer_lib__Comptime.cmt
+   lib/wyzer_lib__Comptime.cmx
    lib/wyzer_lib__Eval.cmi
    lib/wyzer_lib__Eval.cmt
    lib/wyzer_lib__Eval.cmx
@@ -69,6 +73,10 @@
       (obj_name wyzer_lib__Ast)
       (visibility public)
       (source (path Ast) (impl (path lib/ast.ml))))
+     (module
+      (obj_name wyzer_lib__Comptime)
+      (visibility public)
+      (source (path Comptime) (impl (path lib/comptime.ml))))
      (module
       (obj_name wyzer_lib__Eval)
       (visibility public)

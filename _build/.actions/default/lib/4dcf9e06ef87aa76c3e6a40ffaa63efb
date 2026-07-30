@@ -1,1 +1,1 @@
-lib/typechecker.pp.ml: Ast Int64 List Map Option Printf String
+lib/typechecker.pp.ml: Ast Buffer Int64 Lexer Lexing List Map Option Parser Printf String

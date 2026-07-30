@@ -1,0 +1,16 @@
+fn heavy_computation() -> u32 {
+    let a: u32 = 10u32;
+    let b: u32 = 20u32;
+    a + b
+}
+
+fn main() @ Server {
+    std::io::println("Starting program...");
+    
+    // This heavy computation runs at COMPILE TIME!
+    // The Compiler role executes it and splices the result directly into the AST.
+    let precomputed: u32 = transfer(heavy_computation(), Compiler);
+    
+    std::io::println("The precomputed sum is:");
+    std::io::println(precomputed);
+}

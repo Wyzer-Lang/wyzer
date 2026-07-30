@@ -1,0 +1,23 @@
+pub trait Show {
+    fn to_string(self: Point) -> str;
+}
+
+pub struct Point {
+    x: u32,
+    y: u32
+}
+
+impl Show for Point {
+    fn to_string(self: Point) -> str {
+        std::io::println("Formatting Point...");
+        // In a real language we would do string interpolation, 
+        // but for now we just return a static string to prove dispatch works.
+        "Point { x: ?, y: ? }"
+    }
+}
+
+fn main() {
+    let p: Point = Point { x: 10u32, y: 20u32 };
+    let s: str = p.to_string(); // Static dispatch via method call!
+    std::io::println(s);
+}

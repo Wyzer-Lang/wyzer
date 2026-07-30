@@ -17,6 +17,8 @@ type env = {
   active_targs: typ list option;
   roles: unit StringMap.t;
   trace: (string * typ) list;
+  traits: trait_decl StringMap.t;
+  impls: impl_decl list;
 }
 
 let empty_env = {
@@ -30,8 +32,10 @@ let empty_env = {
   ret_typ = None;
   current_role = "Global";
   active_targs = None;
-  roles = StringMap.add "Main" () (StringMap.add "Global" () StringMap.empty);
+  roles = StringMap.add "Compiler" () (StringMap.add "Main" () (StringMap.add "Global" () StringMap.empty));
   trace = [];
+  traits = StringMap.empty;
+  impls = [];
 }
 
 exception TypeError of string
@@ -103,6 +107,33 @@ let is_integer_type = function
   | TU8 | TU16 | TU32 | TU64 | TI8 | TI16 | TI32 | TI64 -> true
   | _ -> false
 
+let parse_format_string (s: string) : string * (Ast.expr * string) list =
+  let len = String.length s in
+  let rec parse_lit i acc_lit =
+    if i >= len then (Buffer.contents acc_lit, i)
+    else if s.[i] = '{' then (Buffer.contents acc_lit, i + 1)
+    else (Buffer.add_char acc_lit s.[i]; parse_lit (i + 1) acc_lit)
+  in
+  let rec parse_expr i acc_expr =
+    if i >= len then raise (TypeError "Unterminated { in format string")
+    else if s.[i] = '}' then (Buffer.contents acc_expr, i + 1)
+    else (Buffer.add_char acc_expr s.[i]; parse_expr (i + 1) acc_expr)
+  in
+  let rec parse_all i =
+    if i >= len then ("", [])
+    else
+      let lit_buf = Buffer.create 16 in
+      let (lit, next_i) = parse_lit i lit_buf in
+      if next_i >= len then (lit, [])
+      else
+        let expr_buf = Buffer.create 16 in
+        let (expr_str, next_i2) = parse_expr next_i expr_buf in
+        let e = Parser.standalone_expr Lexer.read (Lexing.from_string expr_str) in
+        let (next_lit, rest) = parse_all next_i2 in
+        (lit, (e, next_lit) :: rest)
+  in
+  parse_all 0
+
 let rec check_expr env e expected_typ_opt =
   match e with
   | ELit (LInt (_, t_opt)) -> 
@@ -134,6 +165,16 @@ let rec check_expr env e expected_typ_opt =
                 raise (TypeError (Printf.sprintf "Cannot access global %s belonging to role %s from role %s" name var_role env.current_role));
               t, env
           | None -> raise (TypeError ("Undefined variable: " ^ name))))
+  | EPathVar path ->
+      let resolved_path =
+        match StringMap.find_opt (List.hd path) env.imports with
+        | Some mod_path -> mod_path @ List.tl path
+        | None -> path
+      in
+      if resolved_path = ["std"; "io"; "stdin"] || resolved_path = ["std"; "io"; "stdout"] || resolved_path = ["std"; "io"; "stderr"] then
+        TBase (TCustom "Stream"), env
+      else
+        raise (TypeError ("Unknown path variable: " ^ String.concat "::" path))
   | ECall (name, args) ->
       let targs_opt = env.active_targs in
       let env_clean = { env with active_targs = None } in
@@ -185,6 +226,22 @@ let rec check_expr env e expected_typ_opt =
                 let final_ret = if f_role = env_clean.current_role then base_ret else TRole (base_ret, f_role) in
                 final_ret, env_after_args
           | None -> raise (TypeError ("Undefined function: " ^ name))))
+  | EMethodCall (obj, method_name, args, resolved_name_ref) ->
+      let t_obj, _ = check_expr env obj None in
+      let rec find_method impls =
+        match impls with
+        | [] -> raise (TypeError ("No method " ^ method_name ^ " found for type " ^ Ast.show_typ t_obj))
+        | impl :: rest ->
+            if types_compatible impl.for_typ t_obj then
+              match List.find_opt (fun (m: Ast.fn_decl) -> m.name = method_name) impl.methods with
+              | Some m -> (impl, m)
+              | None -> find_method rest
+            else find_method rest
+      in
+      let (impl, _) = find_method env.impls in
+      let mangled_name = impl.trait_name ^ "_" ^ (Ast.show_typ impl.for_typ |> String.map (function ' ' | '(' | ')' -> '_' | c -> c)) ^ "_" ^ method_name in
+      resolved_name_ref := Some mangled_name;
+      check_expr env (ECall (mangled_name, obj :: args)) expected_typ_opt
   | EPathCall (path, args) ->
       let prefix = List.hd path in
       if StringMap.mem prefix env.enums then (
@@ -192,16 +249,26 @@ let rec check_expr env e expected_typ_opt =
         let enum_name = prefix in
         let variant_name = List.nth path 1 in
         let enum_decl = StringMap.find enum_name env.enums in
-        if not (List.exists (fun (m: Ast.enum_member) -> m.name = variant_name) enum_decl.members) then
-          raise (TypeError ("Enum variant not found: " ^ variant_name));
-        TBase (TCustom enum_name), env
+        let variant_opt = List.find_opt (fun (m: Ast.enum_member) -> m.name = variant_name) enum_decl.members in
+        (match variant_opt with
+        | None -> raise (TypeError ("Enum variant not found: " ^ variant_name))
+        | Some v ->
+            if List.length args <> List.length v.payload then
+              raise (TypeError ("Enum variant " ^ enum_name ^ "::" ^ variant_name ^ " expects different number of arguments"));
+            let env_after_args = List.fold_left2 (fun env_acc arg payload_t ->
+              let arg_t, env_next = check_expr env_acc arg (Some payload_t) in
+              if not (types_compatible payload_t arg_t) then
+                raise (TypeError ("Type mismatch in enum payload for " ^ enum_name ^ "::" ^ variant_name));
+              env_next
+            ) env args v.payload in
+            TBase (TCustom enum_name), env_after_args)
       ) else
       let resolved_path =
         match StringMap.find_opt prefix env.imports with
         | Some actual_module -> actual_module @ (List.tl path)
         | None -> path
       in
-      if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] then (
+      if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] || resolved_path = ["std"; "io"; "eprintln"] || resolved_path = ["std"; "io"; "eprint"] then (
         if List.length args <> 1 then raise (TypeError ("print/println expects 1 argument"));
         let arg_t, env_next = check_expr env (List.hd args) None in
         if not (is_printable arg_t) then
@@ -254,6 +321,21 @@ let rec check_expr env e expected_typ_opt =
       | And | Or ->
           if t1 = TBase TBool && t2 = TBase TBool then TBase TBool, env2
           else raise (TypeError "Logical operators require boolean types"))
+  | EFormatStr (s_ref, parsed_ref) ->
+      if !parsed_ref = [] then (
+        let (first_lit, rest) = parse_format_string !s_ref in
+        s_ref := first_lit;
+        parsed_ref := rest;
+        (* Check all expressions in the format string *)
+        let env_acc = ref env in
+        List.iter (fun (e_inner, _) ->
+          let (_, env_new) = check_expr !env_acc e_inner None in
+          env_acc := env_new
+        ) rest;
+        (* For now, we type format strings as TStr *)
+        TBase TStr, !env_acc
+      ) else
+        TBase TStr, env
   | EOk (e, _) ->
       let t, env1 = check_expr env e None in
       TResult (t, TBase (TCustom "_")), env1
@@ -345,18 +427,54 @@ let rec check_expr env e expected_typ_opt =
   | EMatch (e, arms) ->
       let t_e, env1 = check_expr env e None in
       let arm_results = List.map (fun (pat, e_arm) ->
-        let env_arm = match pat with
-          | PIdent id -> { env1 with vars = StringMap.add id (t_e, false, Live) env1.vars }
-          | PVariant ("Ok", Some [PIdent id]) ->
-              (match t_e with
-              | TResult (t1, _) -> { env1 with vars = StringMap.add id (t1, false, Live) env1.vars }
-              | _ -> env1)
-          | PVariant ("Err", Some [PIdent id]) ->
-              (match t_e with
-              | TResult (_, t2) -> { env1 with vars = StringMap.add id (t2, false, Live) env1.vars }
-              | _ -> env1)
-          | _ -> env1
+        let rec bind_pat env pat typ =
+          match pat with
+          | PWildcard -> env
+          | PLit l ->
+              let lit_t = match l with
+              | LInt (_, t) -> TBase (Option.value t ~default:TU32)
+              | LBool _ -> TBase TBool
+              | LStr _ -> TBase TStr
+              in
+              if not (types_compatible typ lit_t) then raise (TypeError "Pattern literal type mismatch");
+              env
+          | PIdent id -> { env with vars = StringMap.add id (add_role_if_missing typ env.current_role, false, Live) env.vars }
+          | PVariant (variant_name, Some pat_list) ->
+              let base_t = match typ with TRole (t, _) -> t | _ -> typ in
+              (match base_t with
+              | TBase (TCustom enum_name) ->
+                  (match StringMap.find_opt enum_name env.enums with
+                  | Some enum_decl ->
+                      (match List.find_opt (fun (m: Ast.enum_member) -> m.name = variant_name) enum_decl.members with
+                      | Some variant ->
+                          if List.length pat_list <> List.length variant.payload then
+                            raise (TypeError ("Pattern payload length mismatch for variant " ^ variant_name));
+                          List.fold_left2 bind_pat env pat_list variant.payload
+                      | None -> raise (TypeError ("Variant " ^ variant_name ^ " not found in enum " ^ enum_name)))
+                  | None -> env)
+              | TResult (t1, t2) ->
+                  if variant_name = "Ok" && List.length pat_list = 1 then bind_pat env (List.hd pat_list) t1
+                  else if variant_name = "Err" && List.length pat_list = 1 then bind_pat env (List.hd pat_list) t2
+                  else raise (TypeError "Result pattern length mismatch")
+              | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
+          | PVariant (variant_name, None) ->
+              let base_t = match typ with TRole (t, _) -> t | _ -> typ in
+              (match base_t with
+              | TBase (TCustom enum_name) ->
+                  (match StringMap.find_opt enum_name env.enums with
+                  | Some enum_decl ->
+                      (match List.find_opt (fun (m: Ast.enum_member) -> m.name = variant_name) enum_decl.members with
+                      | Some variant ->
+                          if variant.payload <> [] then
+                            raise (TypeError ("Variant " ^ variant_name ^ " expects a payload"));
+                          env
+                      | None -> raise (TypeError ("Variant " ^ variant_name ^ " not found in enum " ^ enum_name)))
+                  | None -> env)
+              | TResult _ ->
+                  raise (TypeError "Result variants (Ok/Err) expect a payload")
+              | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
         in
+        let env_arm = bind_pat env1 pat t_e in
         check_expr env_arm e_arm None
       ) arms in
       let first_t, first_env = List.hd arm_results in
@@ -406,7 +524,10 @@ let rec check_expr env e expected_typ_opt =
         | _ -> t_e
       in
       let env_with_trace = { env1 with trace = env1.trace @ [(role, base_t)] } in
-      (TRole (base_t, role), env_with_trace)
+      if role = "Compiler" then
+        (base_t, env_with_trace)
+      else
+        (TRole (base_t, role), env_with_trace)
   | EDup (_, e) -> check_expr env e None
 
 and check_stmt env stmt =
@@ -592,6 +713,19 @@ let check_item env item =
         | _ -> raise (TypeError ("Role property " ^ k ^ " must be a constant literal"))
       ) r.properties;
       { env with roles = StringMap.add r.name () env.roles }
+  | ITrait t ->
+      { env with traits = StringMap.add t.name t env.traits }
+  | IImpl i ->
+      let _ = match StringMap.find_opt i.trait_name env.traits with
+      | Some _ -> ()
+      | None -> raise (TypeError ("Undefined trait: " ^ i.trait_name))
+      in
+      let env_with_impl = { env with impls = i :: env.impls } in
+      List.fold_left (fun e (m: fn_decl) ->
+        let mangled_name = i.trait_name ^ "_" ^ (Ast.show_typ i.for_typ |> String.map (function ' ' | '(' | ')' -> '_' | c -> c)) ^ "_" ^ m.name in
+        let mangled_m = { m with name = mangled_name } in
+        check_fn_decl e mangled_m
+      ) env_with_impl i.methods
 
 let check_program prog =
   let env_with_imports = List.fold_left (fun e (imp : import_decl) ->

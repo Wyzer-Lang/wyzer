@@ -11,6 +11,7 @@ type token =
   | U32
   | U16
   | TRANSFER
+  | TRAIT
   | STRUCT
   | STRING_VAL of (string)
   | STR
@@ -44,6 +45,7 @@ type token =
   | INT of (int64)
   | IN
   | IMPORT
+  | IMPL
   | IF
   | IDENT of (string)
   | I8
@@ -54,6 +56,7 @@ type token =
   | GT
   | GLOBAL
   | GENERIC
+  | FSTRING_VAL of (string)
   | FOR
   | FN
   | FATARROW
@@ -84,5 +87,7 @@ type token =
 exception Error
 
 (* The monolithic API. *)
+
+val standalone_expr: (Lexing.lexbuf -> token) -> Lexing.lexbuf -> (Ast.expr)
 
 val program: (Lexing.lexbuf -> token) -> Lexing.lexbuf -> (Ast.program)

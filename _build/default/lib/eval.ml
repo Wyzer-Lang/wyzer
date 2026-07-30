@@ -8,10 +8,12 @@ type value =
   | VUnit
   | VPtr of int
   | VArray of value array
+  | VFormatStr of string * (value * string) list
 [@@deriving show]
 
 type heap_val =
   | HStruct of string * (string * value) list
+  | HEnum of string * string * value list
   | HOk of value
   | HErr of value
 
@@ -23,6 +25,30 @@ type heap_entry = {
 module IntMap = Map.Make(Int)
 let heap : heap_entry IntMap.t ref = ref IntMap.empty
 let next_ptr = ref 1
+
+let rec print_val oc is_nl arg =
+  (match arg with
+  | VInt i -> if is_nl then Printf.fprintf oc "%Ld\n" i else Printf.fprintf oc "%Ld" i
+  | VBool b -> if is_nl then Printf.fprintf oc "%b\n" b else Printf.fprintf oc "%b" b
+  | VStr s -> if is_nl then Printf.fprintf oc "%s\n" s else Printf.fprintf oc "%s" s
+  | VUnit -> if is_nl then Printf.fprintf oc "()\n" else Printf.fprintf oc "()"
+  | VPtr ptr -> 
+       let entry = IntMap.find ptr !heap in
+       (match entry.data with
+       | HOk _ -> if is_nl then Printf.fprintf oc "Ok(...)\n" else Printf.fprintf oc "Ok(...)"
+       | HErr _ -> if is_nl then Printf.fprintf oc "Err(...)\n" else Printf.fprintf oc "Err(...)"
+       | HStruct _ -> if is_nl then Printf.fprintf oc "struct{...}\n" else Printf.fprintf oc "struct{...}"
+       | HEnum (_, v_name, _) -> if is_nl then Printf.fprintf oc "%s(...)\n" v_name else Printf.fprintf oc "%s(...)" v_name)
+  | VArray _ -> if is_nl then Printf.fprintf oc "[...]\n" else Printf.fprintf oc "[...]"
+  | VFormatStr (s, pieces) ->
+      Printf.fprintf oc "%s" s;
+      List.iter (fun (v, next_s) ->
+        print_val oc false v;
+        Printf.fprintf oc "%s" next_s
+      ) pieces;
+      if is_nl then Printf.fprintf oc "\n"
+  );
+  flush oc
 
 let alloc_heap (v: heap_val) =
   let ptr = !next_ptr in
@@ -102,11 +128,9 @@ let rec eval_expr env e =
       if StringMap.mem prefix env.enums then (
         let enum_name = prefix in
         let variant_name = List.nth path 1 in
-        let enum_decl = StringMap.find enum_name env.enums in
-        let member = List.find (fun (m: Ast.enum_member) -> m.name = variant_name) enum_decl.members in
-        match !(member.computed_val) with
-        | Some v -> VInt v
-        | None -> raise (EvalError ("Enum variant " ^ variant_name ^ " was not computed at compile-time"))
+        let arg_vals = List.map (eval_expr env) args in
+        let ptr = alloc_heap (HEnum (enum_name, variant_name, arg_vals)) in
+        VPtr ptr
       ) else
       let resolved_path =
         match StringMap.find_opt prefix env.imports with
@@ -116,19 +140,12 @@ let rec eval_expr env e =
       if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] then (
         let is_nl = resolved_path = ["std"; "io"; "println"] in
         let arg = eval_expr env (List.hd args) in
-        (match arg with
-        | VInt i -> if is_nl then Printf.printf "%Ld\n" i else Printf.printf "%Ld" i
-        | VBool b -> if is_nl then Printf.printf "%b\n" b else Printf.printf "%b" b
-        | VStr s -> if is_nl then Printf.printf "%s\n" s else Printf.printf "%s" s
-        | VUnit -> if is_nl then Printf.printf "()\n" else Printf.printf "()"
-        | VPtr ptr -> 
-             let entry = IntMap.find ptr !heap in
-             (match entry.data with
-             | HOk _ -> if is_nl then Printf.printf "Ok(...)\n" else Printf.printf "Ok(...)"
-             | HErr _ -> if is_nl then Printf.printf "Err(...)\n" else Printf.printf "Err(...)"
-             | HStruct _ -> if is_nl then Printf.printf "struct{...}\n" else Printf.printf "struct{...}")
-        | VArray _ -> if is_nl then Printf.printf "[...]\n" else Printf.printf "[...]"
-        );
+        print_val stdout is_nl arg;
+        VUnit
+      ) else if resolved_path = ["std"; "io"; "eprintln"] || resolved_path = ["std"; "io"; "eprint"] then (
+        let is_nl = resolved_path = ["std"; "io"; "eprintln"] in
+        let arg = eval_expr env (List.hd args) in
+        print_val stderr is_nl arg;
         VUnit
       ) else if resolved_path = ["std"; "hw"; "bind_interrupt"] then (
         let irq_val = eval_expr env (List.hd args) in
@@ -319,6 +336,20 @@ let rec eval_expr env e =
           arr.(i_int)
       | _ -> raise (EvalError "Invalid array indexing"))
   | ETransfer (e, _) -> eval_expr env e
+  | EPathVar path ->
+      let resolved_path =
+        match StringMap.find_opt (List.hd path) env.imports with
+        | Some mod_path -> mod_path @ List.tl path
+        | None -> path
+      in
+      if resolved_path = ["std"; "io"; "stdin"] then VStr "stdin"
+      else if resolved_path = ["std"; "io"; "stdout"] then VStr "stdout"
+      else if resolved_path = ["std"; "io"; "stderr"] then VStr "stderr"
+      else raise (EvalError "Unknown path variable")
+  | EFormatStr (s_ref, parsed_ref) ->
+      let evaled_rest = List.map (fun (e_inner, lit) -> (eval_expr env e_inner, lit)) !parsed_ref in
+      VFormatStr (!s_ref, evaled_rest)
+  | EMethodCall _ -> raise (EvalError "EMethodCall not desugared")
 
 and eval_stmt env stmt =
   match stmt with
@@ -398,7 +429,7 @@ and eval_block env block =
   let ret_val = Option.map (eval_expr env_final) block.ret_expr in
   env_final, ret_val
 
-let eval_program prog =
+let build_env prog =
   let env_with_imports = List.fold_left (fun e (imp : import_decl) ->
     let prefix = match imp.alias with
       | Some a -> a
@@ -416,8 +447,12 @@ let eval_program prog =
         { e with globals = StringMap.add name (ref v) e.globals }
     | IGeneric (_, i) -> eval_item e i
     | IRole _ -> e
+    | ITrait _ | IImpl _ -> e
   in
-  let env = List.fold_left eval_item env_with_imports prog.Ast.items in
+  List.fold_left eval_item env_with_imports prog.Ast.items
+
+let eval_program prog =
+  let env = build_env prog in
   match StringMap.find_opt "main" env.funcs with
   | Some main_fn ->
       (try ignore (eval_block env (Option.get main_fn.body)) with Return _ -> ())

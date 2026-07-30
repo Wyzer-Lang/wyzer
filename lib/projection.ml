@@ -29,6 +29,7 @@ let rec project_item (target_role: string) (i: item) : item option =
       (match project_item target_role inner with
       | Some p_inner -> Some (IGeneric (params, p_inner))
       | None -> None)
+  | ITrait _ | IImpl _ -> Some i
 
 let project_program (p: program) (target_role: string) : program =
   let projected_items = List.filter_map (project_item target_role) p.items in

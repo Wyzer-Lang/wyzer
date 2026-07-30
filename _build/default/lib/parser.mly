@@ -5,9 +5,10 @@ open Ast
 %token <int64> INT
 %token <bool> BOOL_VAL
 %token <string> STRING_VAL
+%token <string> FSTRING_VAL
 %token <string> IDENT
 
-%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA GENERIC ROLE PUB
+%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA GENERIC ROLE PUB TRAIT IMPL
 %token U8 U16 U32 U64 USIZE I8 I16 I32 I64 ISIZE BOOL STR
 %token PLUS MINUS STAR SLASH SHL SHR BITAND BITOR AND OR NOT
 %token EQEQ NEQ LT GT LTE GTE EQ FATARROW
@@ -30,6 +31,7 @@ open Ast
 %nonassoc NOT UMINUS
 
 %start <Ast.program> program
+%start <Ast.expr> standalone_expr
 %%
 
 %inline visibility:
@@ -39,17 +41,22 @@ open Ast
 program:
   | imports=list(import_decl) items=list(item) EOF { { imports; items } }
 
+standalone_expr:
+  | e=expr EOF { e }
+
 import_decl:
   | IMPORT path=module_path alias=option(AS id=IDENT {id}) SEMICOLON { { path; alias } }
 
 module_path:
-  | id=IDENT { [id] }
+  | id=variant_ident { [id] }
   | id=IDENT COLONCOLON rest=module_path { id :: rest }
 
 item:
   | f=fn_decl { IFn f }
   | e=enum_decl { IEnum e }
   | s=struct_decl { IStruct s }
+  | t=trait_decl { ITrait t }
+  | i=impl_decl { IImpl i }
   | v=visibility GLOBAL name=IDENT COLON t=typ EQ init=expr SEMICOLON { IGlobal { is_pub = v; name; typ = t; init } }
   | ROLE AT id=IDENT SEMICOLON { IRole { name = id; properties = [] } }
   | ROLE AT id=IDENT LBRACE props=separated_list(COMMA, field_init) RBRACE { IRole { name = id; properties = props } }
@@ -57,6 +64,12 @@ item:
 
 struct_decl:
   | v=visibility STRUCT name=IDENT LBRACE fields=separated_list(COMMA, field) RBRACE { { is_pub = v; name; fields } }
+
+trait_decl:
+  | v=visibility TRAIT name=IDENT LBRACE methods=list(fn_sig) RBRACE { { is_pub = v; name; methods } }
+
+impl_decl:
+  | IMPL trait_name=IDENT FOR t=typ LBRACE methods=list(fn_decl) RBRACE { { trait_name; for_typ = t; methods } }
 
 field:
   | name=IDENT COLON typ=typ { ({ name; typ } : Ast.field) }
@@ -66,6 +79,10 @@ fn_decl:
     { { is_pub = v; name; params; ret_typ = ret; role; is_extern = true; body = None } }
   | v=visibility FN name=IDENT LPAREN params=separated_list(COMMA, param) RPAREN role=option(AT r=IDENT {r}) ret=option(MINUS GT t=typ {t}) b=block
     { { is_pub = v; name; params; ret_typ = ret; role; is_extern = false; body = Some b } }
+
+fn_sig:
+  | FN name=IDENT LPAREN params=separated_list(COMMA, param) RPAREN ret=option(MINUS GT t=typ {t}) SEMICOLON
+    { { name; params; ret_typ = ret } }
 
 param:
   | name=IDENT COLON typ=typ { ({ name; typ } : Ast.param) }
@@ -86,15 +103,17 @@ base_type:
   | GENERIC LT args=separated_nonempty_list(COMMA, typ) GT t=base_type { TGenericApp (args, t) }
 
 enum_decl:
-  | v=visibility ENUM name=IDENT COLON base_typ=base_type LPAREN iota_expr=expr RPAREN LBRACE members=separated_list(COMMA, enum_member) RBRACE
-    { { is_pub = v; name; base_typ; iota_expr; members } }
+  | v=visibility ENUM name=IDENT base=option(COLON t=base_type LPAREN e=expr RPAREN { (t, e) }) LBRACE members=separated_list(COMMA, enum_member) RBRACE
+    { let base_typ, iota_expr = match base with Some b -> b | None -> TU32, Ast.ELit (LInt (0L, Some TU32)) in
+      { is_pub = v; name; base_typ; iota_expr; members } }
 
 override:
   | AT_EQ e=expr { (Ast.IotaOverride, e) }
   | DOLLAR_EQ e=expr { (Ast.ValueOverride, e) }
 
 enum_member:
-  | name=IDENT ov=option(override) { { name; override = ov; computed_val = ref None } }
+  | name=variant_ident payload=option(LPAREN types=separated_list(COMMA, typ) RPAREN {types}) override=option(override)
+    { { name; payload = Option.value payload ~default:[]; override; computed_val = ref None } }
 
 block:
   | LBRACE RBRACE { { stmts = []; ret_expr = None } }
@@ -147,9 +166,10 @@ expr_base(X):
   | e=X AS t=typ { ECast (e, t) }
   | OK LPAREN e=expr RPAREN { EOk (e, None) }
   | ERR LPAREN e=expr RPAREN { EErr (e, None) }
-  | id1=IDENT COLONCOLON rest=module_path { EPathCall (id1 :: rest, []) }
+  | id=IDENT LPAREN args=separated_list(COMMA, expr) RPAREN { ECall (id, args) }
   | IOTA { EVar "iota" }
   | IF cond=expr_no_struct thn=block els=option(ELSE e=else_branch {e}) { EIf (cond, thn, els) }
+  | e1=X DOT id=IDENT LPAREN args=separated_list(COMMA, expr) RPAREN { EMethodCall (e1, id, args, ref None) }
   | e=X DOT f=IDENT { EField (e, f) }
   | MATCH e=expr_no_struct LBRACE arms=nonempty_list(match_arm) RBRACE { EMatch (e, arms) }
   | path=module_path LPAREN args=separated_list(COMMA, expr) RPAREN
@@ -161,7 +181,8 @@ expr_base(X):
   | e1=X LBRACKET e2=expr RBRACKET %prec LBRACKET { EIndex (e1, e2) }
   | GENERIC LT args=separated_nonempty_list(COMMA, typ) GT e=X { EGenericApp (args, e) }
   | l=literal { ELit l }
-  | id=IDENT { EVar id }
+  | s=FSTRING_VAL { EFormatStr (ref s, ref []) }
+  | path=module_path { match path with | [id] -> EVar id | _ -> EPathVar path }
   | LPAREN e=expr RPAREN { e }
 
 field_init:
@@ -178,7 +199,10 @@ variant_ident:
 
 pattern:
   | UNDERSCORE { PWildcard }
+  | l=literal { PLit l }
   | IDENT { PIdent $1 }
+  | id1=IDENT COLONCOLON rest=module_path { PVariant (List.hd (List.rev (id1 :: rest)), None) }
+  | id1=IDENT COLONCOLON rest=module_path LPAREN args=separated_list(COMMA, pattern) RPAREN { PVariant (List.hd (List.rev (id1 :: rest)), Some args) }
   | OK { PVariant ("Ok", None) }
   | ERR { PVariant ("Err", None) }
   | v=variant_ident LPAREN args=separated_list(COMMA, pattern) RPAREN { PVariant (v, Some args) }

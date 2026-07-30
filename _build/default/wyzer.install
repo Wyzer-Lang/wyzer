@@ -2,6 +2,7 @@ lib: [
   "_build/install/default/lib/wyzer/META"
   "_build/install/default/lib/wyzer/dune-package"
   "_build/install/default/lib/wyzer/lib/ast.ml" {"lib/ast.ml"}
+  "_build/install/default/lib/wyzer/lib/comptime.ml" {"lib/comptime.ml"}
   "_build/install/default/lib/wyzer/lib/eval.ml" {"lib/eval.ml"}
   "_build/install/default/lib/wyzer/lib/lexer.ml" {"lib/lexer.ml"}
   "_build/install/default/lib/wyzer/lib/parser.ml" {"lib/parser.ml"}
@@ -19,6 +20,9 @@ lib: [
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Ast.cmi" {"lib/wyzer_lib__Ast.cmi"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Ast.cmt" {"lib/wyzer_lib__Ast.cmt"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Ast.cmx" {"lib/wyzer_lib__Ast.cmx"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Comptime.cmi" {"lib/wyzer_lib__Comptime.cmi"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Comptime.cmt" {"lib/wyzer_lib__Comptime.cmt"}
+  "_build/install/default/lib/wyzer/lib/wyzer_lib__Comptime.cmx" {"lib/wyzer_lib__Comptime.cmx"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Eval.cmi" {"lib/wyzer_lib__Eval.cmi"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Eval.cmt" {"lib/wyzer_lib__Eval.cmt"}
   "_build/install/default/lib/wyzer/lib/wyzer_lib__Eval.cmx" {"lib/wyzer_lib__Eval.cmx"}

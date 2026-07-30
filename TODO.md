@@ -1,8 +1,8 @@
 # Wyzer TODO List
 
 ## Core Metaprogramming
-- [ ] Add `@Compiler` as a built-in role to execute code during compilation.
-- [ ] Support `transfer(ast, TargetRole)` for injecting compile-time values and ASTs into runtime roles.
+- [x] Add `@Compiler` as a built-in role to execute code during compilation.
+- [x] Support `transfer(ast, TargetRole)` for injecting compile-time values and ASTs into runtime roles.
 - [ ] Compile-time reflection API (`typeof`, `sizeof`, `alignof`).
 - [ ] Expose an AST manipulation API to the `@Compiler` role for writing macros.
 - [ ] Programmatic AST inspection (iterating over struct fields at compile time).
@@ -11,15 +11,16 @@
 - [ ] Type-State metaprogramming (changing a type from `File<Open>` to `File<Closed>`).
 
 ## Choreography & Concurrency Enhancements
-- [ ] Endpoint Projection: Export physical binaries for each projected node via a compiler backend (C/OCaml code generation).
+- [x] Endpoint Projection (AST Splitting): Automatically strip irrelevant code for specific roles (`--role` CLI flag).
+- [ ] Compiler Backend: Export physical standalone binaries for projected nodes via C/OCaml code generation.
 - [ ] Multi-cast transfers (e.g., `transfer(val, [@Node1, @Node2, @Node3])`).
 - [ ] Fault tolerance decorators for network drops (`@Timeout`, `@Retry`) mapped to External roles.
 - [ ] Zero-copy shared-memory IPC optimization for threads on the same physical CPU.
 
 ## Advanced Type System
-- [ ] Traits and Type Classes (`trait Show { fn to_string() -> str; }`).
+- [x] Traits and Type Classes (`trait Show { fn to_string() -> str; }`).
 - [ ] Trait bounds on generics (`generic<T: Show>`).
-- [ ] Algebraic Data Types (Full pattern matching on nested enums/structs).
+- [x] Algebraic Data Types (Full pattern matching on nested enums/structs).
 - [ ] Smart Pointers (`Box<T>`, `Rc<T>`, `Arc<T>`).
 - [ ] Slices (`[u8]`) and fat pointers.
 - [ ] `any` type for dynamic dispatch and v-tables.
@@ -44,9 +45,9 @@
 ## Standard Library & Built-ins
 
 ### `std::io` (Input/Output)
-- [ ] Standard streams: `stdin`, `stdout`, `stderr`.
-- [ ] Printing macros/functions: `print`, `println`, `eprint`, `eprintln`.
-- [ ] Formatting and interpolation (e.g., `f"Value: {x}"`).
+- [x] Standard streams: `stdin`, `stdout`, `stderr`.
+- [x] Printing macros/functions: `print`, `println`, `eprint`, `eprintln`.
+- [x] Formatting and interpolation (e.g., `f"Value: {x}"`).
 - [ ] Generic `Read` and `Write` stream interfaces/traits.
 
 ### `std::fs` (File System & Paths)

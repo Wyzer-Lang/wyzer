@@ -1,16 +1,58 @@
 # 6. Enums and Choices
 
-Sometimes a variable can only be a few specific things. For example, a traffic light can only be Red, Yellow, or Green. 
+Sometimes a variable can only be a few specific things. For example, a traffic light can only be Red, Yellow, or Green. Or a network message can be a Success (with data) or an Error (with an error message).
 
-In Wyzer, you use an `enum` to make a list of choices.
+In Wyzer, you use an `enum` to make a list of choices. There are two ways to use them: **Number Enums** and **Data Enums**.
 
-Because Wyzer believes in "no hidden magic", there is only **one** way to declare an enum, and you must explicitly tell the compiler what type of numbers to use and how to calculate them.
+---
 
-You do this using an `iota` expression. `iota` represents the current step in the list!
+## 1. Data Enums (Enums with Data)
 
-## Standard Numbering
+Often, you want a choice to carry extra information. For example, a network request might give you a `Message` that is either `Ok` (containing a number) or `Err` (containing text).
 
-If you just want your choices to be numbered `0, 1, 2`, you simply pass `iota`:
+You can declare a Data Enum simply by listing the choices, and optionally putting types in parenthesis:
+
+```wyzer
+pub enum Message {
+    Ok(u32),       // A choice that carries a number!
+    Err(str),      // A choice that carries text!
+    None           // A choice that carries nothing!
+}
+```
+
+### Creating and Unpacking Data
+
+You create these choices by using `::`, like `Message::Ok(42u32)`.
+
+To read the data inside the choice, you use a `match` statement. A `match` statement checks which choice you have and "unpacks" the data into a new variable!
+
+```wyzer
+fn process(msg: Message) {
+    match msg {
+        Message::Ok(val) => {
+            std::io::println("We got a value!");
+            std::io::println(val); // 'val' holds the u32!
+        },
+        Message::Err(text) => {
+            std::io::println("Uh oh, an error:");
+            std::io::println(text); // 'text' holds the str!
+        },
+        Message::None => {
+            std::io::println("We got nothing.");
+        }
+    }
+}
+```
+
+Because Wyzer manages memory safely without garbage collection, when you "unpack" a choice (like `Message::Ok(val)`), you take full ownership of the `val`. The match statement automatically destroys the outer `Message` box and hands you the data directly.
+
+---
+
+## 2. Number Enums (C-Style Enums)
+
+If you are doing low-level programming (like talking directly to hardware or C code), you might just want a simple list of numbers (like `0, 1, 2`). 
+
+You can explicitly tell the compiler to create a "Number Enum" by putting a type (like `u8`) and a math formula (like `iota`) next to the name:
 
 ```wyzer
 enum TrafficLight: u8 (iota) {
@@ -20,9 +62,11 @@ enum TrafficLight: u8 (iota) {
 }
 ```
 
-## Advanced Numbering
+`iota` is a special word that just means "the current step in the list". The first item is step 0, the next is step 1, and so on.
 
-If you want to control the exact numbers, you can use math inside the parenthesis!
+### Advanced Numbering
+
+You can use math inside the parenthesis to control the exact numbers!
 
 ```wyzer
 enum Flags: u8 (1 << iota) {
@@ -32,32 +76,30 @@ enum Flags: u8 (1 << iota) {
 }
 ```
 
-This exposes exactly how your data is represented underneath. The compiler calculates all the math before your program even runs, so it is extremely fast.
+This lets you create bit-flags instantly. The compiler calculates all the math before your program even runs, so it is extremely fast.
 
-## Special Overrides
+### Special Number Overrides
 
-Sometimes, you need to break the pattern. Wyzer gives you two special tools for this so you don't mess up your counting:
+Sometimes you need to break the pattern. Wyzer gives you two special tools so you don't mess up your counting:
 
-1. **The Iota Override (`@=`)**: This lets you override the `iota` counter. The override happens *before* the math is calculated. You can even use the current `iota` inside your override!
-2. **The Value Override (`$=`)**: This lets you hardcode the final value of a choice, completely ignoring the math! The `iota` counter silently counts up in the background so the next choice in the sequence isn't broken. You can also use `iota` here!
-
-Here is an example of both in action:
+1. **The Iota Override (`@=`)**: This changes what step you are on. You can jump ahead to step 5, for example.
+2. **The Value Override (`$=`)**: This lets you hardcode a specific number for a choice, completely ignoring the math! The `iota` step counter silently counts up in the background so the next choice isn't broken.
 
 ```wyzer
 enum Flags: u8 (1 << iota) {
-   Read,          // iota=0, math: 1<<0 = 1
-   Write,         // iota=1, math: 1<<1 = 2
+   Read,          // step=0, math: 1<<0 = 1
+   Write,         // step=1, math: 1<<1 = 2
    
    // We want Error to be 0, but we don't want to break the sequence!
-   Error $= 0,    // Value Override: math is ignored! value is 0. (iota is still 2)
+   Error $= 0,    // Value Override: math is ignored! value is 0. (step is still 2)
    
-   Execute,       // iota=3, math: 1<<3 = 8 (The sequence resumes perfectly!)
+   Execute,       // step=3, math: 1<<3 = 8 (The sequence resumes perfectly!)
    
-   // We want to jump far ahead! We can use iota in our override!
-   // @= runs first, so iota becomes 4+2=6. Then the math runs: 1<<6 = 64
+   // We want to jump far ahead! We can use the current step in our override!
+   // @= runs first, so step becomes 4+2=6. Then the math runs: 1<<6 = 64
    Custom @= (iota + 2), 
-   Next           // iota=7, math: 1<<7 = 128
+   Next           // step=7, math: 1<<7 = 128
 }
 ```
 
-This ensures there is never any confusion between what the counter is doing and what the final value is! If you want to "pause" the counter, you can always do `@= (iota - 1)`!
+This ensures there is never any confusion between what the counter is doing and what the final value is!

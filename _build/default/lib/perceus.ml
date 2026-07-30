@@ -4,7 +4,7 @@ module StringSet = Set.Make(String)
 
 let rec free_vars_expr (e: expr) : StringSet.t =
   match e with
-  | ELit _ -> StringSet.empty
+  | ELit _ | EPathVar _ -> StringSet.empty
   | EVar x -> StringSet.singleton x
   | ECall (_, args) | EPathCall (_, args) ->
       List.fold_left (fun acc arg -> StringSet.union acc (free_vars_expr arg)) StringSet.empty args
@@ -32,14 +32,17 @@ let rec free_vars_expr (e: expr) : StringSet.t =
       List.fold_left (fun acc elem -> StringSet.union acc (free_vars_expr elem)) StringSet.empty elems
   | EIndex (e, i) ->
       StringSet.union (free_vars_expr e) (free_vars_expr i)
+  | EFormatStr (_, parsed_ref) ->
+      List.fold_left (fun acc (e_inner, _) -> StringSet.union acc (free_vars_expr e_inner)) StringSet.empty !parsed_ref
   | ETransfer (e, _) -> free_vars_expr e
+  | EMethodCall _ -> failwith "EMethodCall should have been desugared by Comptime"
 
 and bound_vars_pat (p: pattern) : StringSet.t =
   match p with
-  | PWildcard -> StringSet.empty
   | PIdent x -> StringSet.singleton x
-  | PVariant (_, Some args) -> List.fold_left (fun acc pat -> StringSet.union acc (bound_vars_pat pat)) StringSet.empty args
-  | PVariant (_, None) -> StringSet.empty
+  | PVariant (_, Some pat_list) ->
+      List.fold_left (fun acc p_inner -> StringSet.union acc (bound_vars_pat p_inner)) StringSet.empty pat_list
+  | PVariant (_, None) | PWildcard | PLit _ -> StringSet.empty
 
 and free_vars_stmt (s: stmt) : StringSet.t =
   match s with
@@ -97,6 +100,10 @@ let rec transform_expr (live_out: StringSet.t) (e: expr) : expr =
   | EArray elems -> EArray (List.map (transform_expr live_out) elems)
   | EIndex (e, i) -> EIndex (transform_expr live_out e, transform_expr live_out i)
   | ETransfer (e, role) -> ETransfer (transform_expr live_out e, role)
+  | EPathVar _ -> e
+  | EFormatStr (s_ref, parsed_ref) ->
+      let new_parsed = List.map (fun (e_inner, lit) -> (transform_expr live_out e_inner, lit)) !parsed_ref in
+      EFormatStr (s_ref, ref new_parsed)
   | _ -> e (* other expressions don't currently have reuse tags *)
 
 and transform_stmt (live_out: StringSet.t) (s: stmt) : stmt =

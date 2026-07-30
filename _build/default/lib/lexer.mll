@@ -14,6 +14,8 @@ rule read = parse
   | newline { Lexing.new_line lexbuf; read lexbuf }
   | "//" [^ '\n']* { read lexbuf }
   | "fn" { FN }
+  | "trait" { TRAIT }
+  | "impl" { IMPL }
   | "pub" { PUB }
   | "enum" { ENUM }
   | "import" { IMPORT }
@@ -81,6 +83,7 @@ rule read = parse
   | "$=" { DOLLAR_EQ }
   | digit+ as n { INT (Int64.of_string n) }
   | '"' { read_string (Buffer.create 17) lexbuf }
+  | "f\"" { read_fstring (Buffer.create 17) lexbuf }
   | ident as id { IDENT id }
   | _ { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
   | eof { EOF }
@@ -100,3 +103,19 @@ and read_string buf = parse
     }
   | _ { raise (SyntaxError ("Illegal string character: " ^ Lexing.lexeme lexbuf)) }
   | eof { raise (SyntaxError ("String is not terminated")) }
+
+and read_fstring buf = parse
+  | '"'       { FSTRING_VAL (Buffer.contents buf) }
+  | '\\' '"'  { Buffer.add_char buf '"'; read_fstring buf lexbuf }
+  | '\\' '{'  { Buffer.add_char buf '{'; read_fstring buf lexbuf }
+  | '\\' '}'  { Buffer.add_char buf '}'; read_fstring buf lexbuf }
+  | '\\' '\\' { Buffer.add_char buf '\\'; read_fstring buf lexbuf }
+  | '\\' 'n'  { Buffer.add_char buf '\n'; read_fstring buf lexbuf }
+  | '\\' 'r'  { Buffer.add_char buf '\r'; read_fstring buf lexbuf }
+  | '\\' 't'  { Buffer.add_char buf '\t'; read_fstring buf lexbuf }
+  | [^ '"' '\\']+
+    { Buffer.add_string buf (Lexing.lexeme lexbuf);
+      read_fstring buf lexbuf
+    }
+  | _ { raise (SyntaxError ("Illegal f-string character: " ^ Lexing.lexeme lexbuf)) }
+  | eof { raise (SyntaxError ("f-string is not terminated")) }

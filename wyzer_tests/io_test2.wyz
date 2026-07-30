@@ -1,0 +1,5 @@
+fn main() {
+    let name2 = "Wyzer";
+    let version = 1;
+    std::io::println(f"Greetings to {name2} version {version}!");
+}

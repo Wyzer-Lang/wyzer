@@ -1,0 +1,39 @@
+pub enum Message {
+    Ok(u32),
+    Err(str),
+    None
+}
+
+fn handle_ok(val: u32) -> u32 {
+    std::io::println("Success! The value was received.");
+    return val;
+}
+
+fn handle_err(msg: str) -> u32 {
+    std::io::println(msg);
+    return 999u32;
+}
+
+fn handle_none() -> u32 {
+    std::io::println("Nothing was returned.");
+    return 0u32;
+}
+
+fn process_result(r: Message) -> u32 {
+    match r {
+        Message::Ok(val) => handle_ok(val),
+        Message::Err(msg) => handle_err(msg),
+        Message::None => handle_none()
+    }
+}
+
+fn main() {
+    let r1: Message = Message::Ok(42u32);
+    let o1: u32 = process_result(r1);
+
+    let r2: Message = Message::Err("Network Timeout");
+    let o2: u32 = process_result(r2);
+    
+    let r3: Message = Message::None;
+    let o3: u32 = process_result(r3);
+}
