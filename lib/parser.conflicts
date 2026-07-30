@@ -1,9 +1,9 @@
 
-** Conflict (shift/reduce) in state 82.
+** Conflict (reduce/reduce) in state 89.
 ** Token involved: LBRACE
 ** This state is reached from program after reading:
 
-list(import_decl) ENUM IDENT COLON base_type LPAREN MATCH IDENT
+list(import_decl) GLOBAL IDENT COLON typ EQ MATCH IDENT
 
 ** The derivations that appear below have the following common factor:
 ** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
@@ -11,19 +11,50 @@ list(import_decl) ENUM IDENT COLON base_type LPAREN MATCH IDENT
 program 
 list(import_decl) list(item) EOF 
                   item list(item) 
-                  enum_decl 
-                  ENUM IDENT COLON base_type LPAREN expr RPAREN LBRACE loption(separated_nonempty_list(COMMA,enum_member)) RBRACE 
-                                                    (?)
+                  GLOBAL IDENT COLON typ EQ expr SEMICOLON 
+                                            (?)
 
-** In state 82, looking ahead at LBRACE, shifting is permitted
-** because of the following sub-derivation:
-
-MATCH expr LBRACE nonempty_list(match_arm) RBRACE 
-      IDENT . LBRACE loption(separated_nonempty_list(COMMA,field_init)) RBRACE 
-
-** In state 82, looking ahead at LBRACE, reducing production
+** In state 89, looking ahead at LBRACE, reducing production
 ** expr -> IDENT
 ** is permitted because of the following sub-derivation:
 
 MATCH expr LBRACE nonempty_list(match_arm) RBRACE // lookahead token appears
       IDENT . 
+
+** In state 89, looking ahead at LBRACE, reducing production
+** module_path -> IDENT
+** is permitted because of the following sub-derivation:
+
+MATCH expr LBRACE nonempty_list(match_arm) RBRACE 
+      module_path LBRACE loption(separated_nonempty_list(COMMA,field_init)) RBRACE // lookahead token appears
+      IDENT . 
+
+** Conflict (reduce/reduce) in state 91.
+** Token involved: LBRACE
+** This state is reached from program after reading:
+
+list(import_decl) GLOBAL IDENT COLON typ EQ MATCH IDENT COLONCOLON module_path
+
+** The derivations that appear below have the following common factor:
+** (The question mark symbol (?) represents the spot where the derivations begin to differ.)
+
+program 
+list(import_decl) list(item) EOF 
+                  item list(item) 
+                  GLOBAL IDENT COLON typ EQ expr SEMICOLON 
+                                            (?)
+
+** In state 91, looking ahead at LBRACE, reducing production
+** expr -> IDENT COLONCOLON module_path
+** is permitted because of the following sub-derivation:
+
+MATCH expr LBRACE nonempty_list(match_arm) RBRACE // lookahead token appears
+      IDENT COLONCOLON module_path . 
+
+** In state 91, looking ahead at LBRACE, reducing production
+** module_path -> IDENT COLONCOLON module_path
+** is permitted because of the following sub-derivation:
+
+MATCH expr LBRACE nonempty_list(match_arm) RBRACE 
+      module_path LBRACE loption(separated_nonempty_list(COMMA,field_init)) RBRACE // lookahead token appears
+      IDENT COLONCOLON module_path . 

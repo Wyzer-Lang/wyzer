@@ -1,0 +1,13 @@
+fn main() {
+        std::io::println("hello world!");
+
+        let x = 9;
+        var y = 10;
+
+        if x == y {
+                y = 9;
+                std::io::println("ok!");
+        } else {
+                std::io::println("not")
+        }
+}

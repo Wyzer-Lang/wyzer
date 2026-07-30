@@ -1,11 +1,12 @@
 type base_type =
-  | TU8 | TU16 | TU32 | TU64
-  | TI8 | TI16 | TI32 | TI64
+  | TU8 | TU16 | TU32 | TU64 | TUSize
+  | TI8 | TI16 | TI32 | TI64 | TISize
   | TBool | TStr | TUnit
   | TCustom of string
+  | TGenericApp of typ list * base_type
 [@@deriving show, eq]
 
-type typ =
+and typ =
   | TBase of base_type
   | TResult of typ * typ
   | TRole of typ * string
@@ -15,7 +16,12 @@ type typ =
 type binop =
   | Add | Sub | Mul | Div
   | Shl | Shr | BitAnd | BitOr
+  | And | Or
   | Eq | Neq | Lt | Gt | Lte | Gte
+[@@deriving show, eq]
+
+type unop =
+  | Not | Neg
 [@@deriving show, eq]
 
 type literal =
@@ -38,6 +44,7 @@ type expr =
   | EVar of string
   | ECall of string * expr list
   | EPathCall of string list * expr list
+  | EUnOp of unop * expr
   | EBinOp of expr * binop * expr
   | EIf of expr * block * block option
   | EOk of expr * string option
@@ -50,6 +57,7 @@ type expr =
   | EArray of expr list
   | EIndex of expr * expr
   | ETransfer of expr * string
+  | EGenericApp of typ list * expr
 [@@deriving show, eq]
 
 and stmt =
@@ -110,11 +118,18 @@ type struct_decl = {
 }
 [@@deriving show, eq]
 
+type role_decl = {
+  name: string;
+}
+[@@deriving show, eq]
+
 type item =
   | IFn of fn_decl
   | IEnum of enum_decl
   | IStruct of struct_decl
   | IGlobal of { name: string; typ: typ; init: expr }
+  | IGeneric of string list * item
+  | IRole of role_decl
 [@@deriving show, eq]
 
 type import_decl = {

@@ -1,6 +1,7 @@
 type token =
     WHILE
   | VAR
+  | USIZE
   | UNDERSCORE
   | U8
   | U64
@@ -16,12 +17,15 @@ type token =
   | SHL
   | SEMICOLON
   | RPAREN
+  | ROLE
   | RETURN
   | RESULT
   | RBRACKET
   | RBRACE
   | PLUS
+  | OR
   | OK
+  | NOT
   | NEQ
   | MINUS
   | MATCH
@@ -31,6 +35,7 @@ type token =
   | LET
   | LBRACKET
   | LBRACE
+  | ISIZE
   | IOTA
   | INT of int64
   | IN
@@ -44,6 +49,7 @@ type token =
   | GTE
   | GT
   | GLOBAL
+  | GENERIC
   | FOR
   | FN
   | FATARROW
@@ -67,17 +73,20 @@ type token =
   | AT_EQ
   | AT
   | AS
+  | AND
 val menhir_begin_marker : int
 val xv_variant_ident : string
 val xv_typ : Ast.typ
 val xv_struct_decl : Ast.struct_decl
 val xv_stmt : Ast.stmt
+val xv_separated_nonempty_list_COMMA_typ_ : Ast.typ list
 val xv_separated_nonempty_list_COMMA_pattern_ : Ast.pattern list
 val xv_separated_nonempty_list_COMMA_param_ : Ast.param list
 val xv_separated_nonempty_list_COMMA_field_init_ : (string * Ast.expr) list
 val xv_separated_nonempty_list_COMMA_field_ : Ast.field list
 val xv_separated_nonempty_list_COMMA_expr_ : Ast.expr list
 val xv_separated_nonempty_list_COMMA_enum_member_ : Ast.enum_member list
+val xv_separated_nonempty_list_COMMA_IDENT_ : string list
 val xv_separated_list_COMMA_pattern_ : Ast.pattern list
 val xv_separated_list_COMMA_param_ : Ast.param list
 val xv_separated_list_COMMA_field_init_ : (string * Ast.expr) list
@@ -121,6 +130,9 @@ val xv_import_decl : Ast.import_decl
 val xv_fn_decl : Ast.fn_decl
 val xv_field_init : string * Ast.expr
 val xv_field : Ast.field
+val xv_expr_no_struct : Ast.expr
+val xv_expr_base_expr_no_struct_ : Ast.expr
+val xv_expr_base_expr_ : Ast.expr
 val xv_expr : Ast.expr
 val xv_enum_member : Ast.enum_member
 val xv_enum_decl : Ast.enum_decl

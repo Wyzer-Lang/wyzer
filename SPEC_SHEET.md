@@ -75,7 +75,7 @@ call        ::= ident "(" arg_list? ")"
 path_call   ::= module_path "(" arg_list? ")"   (* e.g. io::println(...) *)
 arg_list    ::= expr ("," expr)*
 binop_expr  ::= expr binop expr
-binop       ::= "+" | "-" | "*" | "/" | "<<" | ">>" | "&" | "|"
+binop       ::= "+" | "-" | "*" | "/" | "<<" | ">>" | "&" | "|" | "&&" | "||"
               | "==" | "!=" | "<" | ">" | "<=" | ">="
 
 match_expr  ::= "match" expr "{" match_arm+ "}"
@@ -267,8 +267,8 @@ The rule above works if the interrupt gives control back exactly where it stoppe
 enum_decl   ::= "enum" ident ":" base_type "(" iota_expr ")" "{" enum_body "}"
 iota_expr   ::= expr                (* must reference `iota`; must be const-evaluable *)
 enum_body   ::= enum_member ("," enum_member)*
-enum_member ::= ident ("=" const_expr)?
-const_expr  ::= expr                (* may reference `prev`; must be const-evaluable *)
+enum_member ::= ident (override_expr)?
+override_expr ::= "@=" expr | "$=" expr
 ```
 
 The `(iota_expr)` part is required. You cannot write a plain `enum Foo: u8 { ... }`. We want only one way to define enums.
@@ -277,12 +277,11 @@ The `(iota_expr)` part is required. You cannot write a plain `enum Foo: u8 { ...
 
 For the `n`-th item in an enum with math rule `E`:
 
-```
-   value(member_n) = E[iota := n]                     if member_n has no explicit "= const_expr"
-   value(member_n) = eval(const_expr[prev := value(member_{n-1})])   if member_n has "= const_expr"
-```
+1. If it has no override: The value is `E[iota]`. `iota` then increments.
+2. If it has `@= expr`: `iota` is permanently overwritten to `expr`. The value is then calculated as `E[iota]`. `iota` then increments.
+3. If it has `$= expr`: The math rule `E` is completely ignored for this variant. The final value is `expr`. `iota` then increments normally.
 
-The `iota` value is always its exact position. It does not care about what values came before it. If you want to use the previous value, you must use `prev`.
+Because `@=` overwrites `iota` *before* the final variant value is evaluated by `E`, you can safely use `@= (iota - 1)` to effectively "pause" the `iota` counter.
 
 ### 8.3 Design Choices
 
@@ -292,26 +291,15 @@ The `iota` value is always its exact position. It does not care about what value
 
 ### 8.4 Example
 
-```
-enum Baz: u32 (iota * 2) {
-    Var1,        // iota=0 : 0
-    Var2,        // iota=1 : 2
-    Var3,        // iota=2 : 4
-    Var4 = 12,   // explicit : 12
-    Var5,        // iota=4 : 8   (NOT 26, iota did not inherit from Var4's override)
-    Var6,        // iota=5 : 10
-};
-```
-
-If you want to continue from 12, you must write it out:
-
-```
-enum Baz2: u32 (iota * 2) {
-    Var1, Var2, Var3,
-    Var4 = 12,
-    Var5 = prev + 2,   // : 14
-    Var6 = prev + 2,   // : 16
-};
+```wyzer
+enum Flags: u8 (1 << iota) {
+   Read,                  // iota=0, math: 1<<0 = 1
+   Write,                 // iota=1, math: 1<<1 = 2
+   Error $= (iota * 10),  // Value Override: iota=2 (ignored for math), val=20
+   Execute,               // iota=3 (resumed!), math: 1<<3 = 8
+   Custom @= (iota + 2),  // Iota Override: iota jumps to 4+2=6, math 1<<6=64
+   Next                   // iota=7, math: 1<<7 = 128
+}
 ```
 
 ---
@@ -395,6 +383,13 @@ The `⊣ ∅` part is very important. It means the function **must use every lin
 ```
 
 Both the `if` and `else` blocks must use the exact same linear resources. This stops a resource from being used in one block but forgotten in the other. An `if` statement without an `else` is only allowed if no linear resources are used.
+
+#### Logical Short-Circuiting
+When evaluating boolean conditions using logical AND (`&&`) and logical OR (`||`), Wyzer guarantees **left-to-right short-circuit evaluation**:
+- For `a && b`: If `a` evaluates to `false`, `b` is **never** evaluated.
+- For `a || b`: If `a` evaluates to `true`, `b` is **never** evaluated.
+
+This guarantees that expressions like `if ptr != null && ptr.val > 0` are completely safe.
 
 ### 12.2 Loops **[OPEN: affects resources]**
 

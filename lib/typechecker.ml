@@ -10,9 +10,12 @@ type env = {
   globals: typ StringMap.t;
   enums: enum_decl StringMap.t;
   structs: struct_decl StringMap.t;
+  generic_items: (string list * item) StringMap.t;
   imports: string list StringMap.t;
   ret_typ: typ option;
   current_role: string;
+  active_targs: typ list option;
+  roles: unit StringMap.t;
 }
 
 let empty_env = {
@@ -21,12 +24,22 @@ let empty_env = {
   globals = StringMap.empty;
   enums = StringMap.empty;
   structs = StringMap.empty;
+  generic_items = StringMap.empty;
   imports = StringMap.empty;
   ret_typ = None;
-  current_role = "Main";
+  current_role = "Global";
+  active_targs = None;
+  roles = StringMap.add "Main" () (StringMap.add "Global" () StringMap.empty);
 }
 
 exception TypeError of string
+
+let rec add_role_if_missing t r =
+  match t with
+  | TRole _ -> t
+  | TResult (t1, t2) -> TRole (TResult (add_role_if_missing t1 r, add_role_if_missing t2 r), r)
+  | TArray inner -> TRole (TArray inner, r)
+  | _ -> TRole (t, r)
 
 let is_int_type = function
   | TBase TU8 | TBase TU16 | TBase TU32 | TBase TU64
@@ -52,6 +65,21 @@ let rec is_printable t =
   | TResult _ -> true
   | TRole (inner, _) -> is_printable inner
 
+let rec substitute_typ subst t =
+  match t with
+  | TBase (TCustom id) ->
+      (match StringMap.find_opt id subst with
+      | Some t' -> t'
+      | None -> t)
+  | TBase (TGenericApp (targs, inner)) -> 
+      let new_inner_t = substitute_typ subst (TBase inner) in
+      let new_inner = match new_inner_t with TBase b -> b | _ -> inner in
+      TBase (TGenericApp (List.map (substitute_typ subst) targs, new_inner))
+  | TBase _ -> t
+  | TResult (t1, t2) -> TResult (substitute_typ subst t1, substitute_typ subst t2)
+  | TRole (inner, r) -> TRole (substitute_typ subst inner, r)
+  | TArray inner -> TArray (substitute_typ subst inner)
+
 let rec types_compatible expected actual =
   if expected = actual then true
   else match expected, actual with
@@ -61,6 +89,12 @@ let rec types_compatible expected actual =
       c1 && c2
   | TRole (t_exp, r_exp), TRole (t_act, r_act) ->
       if r_exp = r_act then types_compatible t_exp t_act else false
+  | TRole (t_exp, _), t_act ->
+      types_compatible t_exp t_act
+  | t_exp, TRole (t_act, _) ->
+      types_compatible t_exp t_act
+  | TBase (TGenericApp (targs1, inner1)), TBase (TGenericApp (targs2, inner2)) ->
+      inner1 = inner2 && List.length targs1 = List.length targs2 && List.for_all2 types_compatible targs1 targs2
   | _, _ -> false
 
 let is_integer_type = function
@@ -82,6 +116,9 @@ let rec check_expr env e expected_typ_opt =
       (match StringMap.find_opt name env.vars with
       | Some (_, _, Consumed) -> raise (TypeError ("Variable " ^ name ^ " has already been consumed"))
       | Some (t, is_mut, Live) ->
+          let var_role = match t with | TRole (_, r) -> r | _ -> "Main" in
+          if var_role <> "Global" && var_role <> env.current_role then
+            raise (TypeError (Printf.sprintf "Cannot access variable %s belonging to role %s from role %s" name var_role env.current_role));
           let new_vars = match t with
             | TRole _ -> StringMap.add name (t, is_mut, Consumed) env.vars
             | _ -> env.vars
@@ -90,24 +127,62 @@ let rec check_expr env e expected_typ_opt =
       | None ->
           (match StringMap.find_opt name env.globals with
           | Some t ->
-              let global_role = match t with | TRole (_, r) -> r | _ -> "Main" in
-              if global_role <> env.current_role then raise (TypeError ("Cannot access global " ^ name ^ " from role " ^ env.current_role));
+              let var_role = match t with | TRole (_, r) -> r | _ -> "Main" in
+              if var_role <> "Global" && var_role <> env.current_role then
+                raise (TypeError (Printf.sprintf "Cannot access global %s belonging to role %s from role %s" name var_role env.current_role));
               t, env
           | None -> raise (TypeError ("Undefined variable: " ^ name))))
   | ECall (name, args) ->
-      (match StringMap.find_opt name env.funcs with
-      | Some f ->
-        if List.length args <> List.length f.params then raise (TypeError ("Arity mismatch for " ^ name));
-        let env_after_args = List.fold_left2 (fun env_acc (p : Ast.param) arg ->
-            let t_arg, env_next = check_expr env_acc arg (Some p.typ) in
-            if not (types_compatible p.typ t_arg) then raise (TypeError ("Argument type mismatch in call to " ^ name));
-            env_next
-          ) env f.params args in
-          let f_role = Option.value f.role ~default:"Main" in
-          let base_ret = Option.value f.ret_typ ~default:(TBase TUnit) in
-          let final_ret = if f_role = env.current_role then base_ret else TRole (base_ret, f_role) in
-          final_ret, env_after_args
-      | None -> raise (TypeError ("Undefined function: " ^ name)))
+      let targs_opt = env.active_targs in
+      let env_clean = { env with active_targs = None } in
+      (match targs_opt with
+      | Some targs ->
+          (match StringMap.find_opt name env_clean.generic_items with
+          | Some (params, IFn f) ->
+              if List.length args <> List.length f.params then raise (TypeError ("Arity mismatch for " ^ name));
+              if List.length targs <> List.length params then raise (TypeError ("Generic arity mismatch for " ^ name));
+              let subst = List.fold_left2 (fun acc p t -> StringMap.add p t acc) StringMap.empty params targs in
+              let env_after_args = List.fold_left2 (fun current_env (p: Ast.param) arg_expr ->
+                let p_typ = substitute_typ subst p.typ in
+                let t_arg, next_env = check_expr current_env arg_expr (Some p_typ) in
+                if not (types_compatible p_typ t_arg) then
+                  raise (TypeError ("Type mismatch in function argument " ^ p.name));
+                next_env
+              ) env_clean f.params args in
+              let base_ret = match f.ret_typ with
+                | Some rt -> substitute_typ subst rt
+                | None -> TBase TUnit
+              in
+              let f_role = Option.value f.role ~default:env_clean.current_role in
+              if f_role <> env_clean.current_role && f_role <> "global" then (
+                let ret_with_role = TRole (base_ret, f_role) in
+                ret_with_role, env_after_args
+              ) else
+                let final_ret = if f_role = env_clean.current_role then base_ret else TRole (base_ret, f_role) in
+                final_ret, env_after_args
+          | _ -> raise (TypeError ("Undefined generic function: " ^ name)))
+      | None ->
+          (match StringMap.find_opt name env_clean.funcs with
+          | Some f ->
+              if List.length args <> List.length f.params then raise (TypeError ("Arity mismatch for " ^ name));
+              let env_after_args = List.fold_left2 (fun current_env (p: Ast.param) arg_expr ->
+                let t_arg, next_env = check_expr current_env arg_expr (Some p.typ) in
+                if not (types_compatible p.typ t_arg) then
+                  raise (TypeError ("Type mismatch in function argument " ^ p.name));
+                next_env
+              ) env_clean f.params args in
+              let base_ret = match f.ret_typ with
+                | Some rt -> rt
+                | None -> TBase TUnit
+              in
+              let f_role = Option.value f.role ~default:env_clean.current_role in
+              if f_role <> env_clean.current_role && f_role <> "global" then (
+                let ret_with_role = TRole (base_ret, f_role) in
+                ret_with_role, env_after_args
+              ) else
+                let final_ret = if f_role = env_clean.current_role then base_ret else TRole (base_ret, f_role) in
+                final_ret, env_after_args
+          | None -> raise (TypeError ("Undefined function: " ^ name))))
   | EPathCall (path, args) ->
       let prefix = List.hd path in
       if StringMap.mem prefix env.enums then (
@@ -149,10 +224,18 @@ let rec check_expr env e expected_typ_opt =
          | _ -> raise (TypeError "Interrupt handler must be a function reference by name"))
       ) else
         raise (TypeError ("Undefined path call: " ^ String.concat "::" resolved_path))
+  | EUnOp (Not, e) ->
+      let t, env1 = check_expr env e (Some (TBase TBool)) in
+      if t = TBase TBool then TBase TBool, env1
+      else raise (TypeError "Logical NOT requires a boolean type")
+  | EUnOp (Neg, e) ->
+      let t, env1 = check_expr env e expected_typ_opt in
+      if is_int_type t then t, env1
+      else raise (TypeError "Negation requires an integer type")
   | EBinOp (e1, op, e2) ->
       let expected_e1 = match op with
         | Add | Sub | Mul | Div | Shl | Shr | BitAnd | BitOr -> expected_typ_opt
-        | Eq | Neq | Lt | Gt | Lte | Gte -> None
+        | Eq | Neq | Lt | Gt | Lte | Gte | And | Or -> None
       in
       let t1, env1 = check_expr env e1 expected_e1 in
       let t2, env2 = check_expr env1 e2 (Some t1) in
@@ -165,7 +248,10 @@ let rec check_expr env e expected_typ_opt =
           TBase TBool, env2
       | Lt | Gt | Lte | Gte ->
           if is_int_type t1 then TBase TBool, env2
-          else raise (TypeError "Comparison operators require integer types"))
+          else raise (TypeError "Comparison operators require integer types")
+      | And | Or ->
+          if t1 = TBase TBool && t2 = TBase TBool then TBase TBool, env2
+          else raise (TypeError "Logical operators require boolean types"))
   | EOk (e, _) ->
       let t, env1 = check_expr env e None in
       TResult (t, TBase (TCustom "_")), env1
@@ -186,31 +272,65 @@ let rec check_expr env e expected_typ_opt =
           if t_thn <> None then raise (TypeError "if without else cannot return a value");
           Option.value t_thn ~default:(TBase TUnit), env_thn)
   | EStruct (name, fields, _) ->
-      (match StringMap.find_opt name env.structs with
-      | Some s_decl ->
-          if List.length fields <> List.length s_decl.fields then
-            raise (TypeError ("Struct " ^ name ^ " field count mismatch"));
-          let env_final = List.fold_left (fun env_acc (f_decl : Ast.field) ->
-            match List.assoc_opt f_decl.name fields with
-            | Some e ->
-                let t_e, env_next = check_expr env_acc e None in
-                if not (types_compatible f_decl.typ t_e) then raise (TypeError ("Struct " ^ name ^ " field " ^ f_decl.name ^ " type mismatch"));
-                env_next
-            | None -> raise (TypeError ("Struct " ^ name ^ " missing field " ^ f_decl.name))
-          ) env s_decl.fields in
-          TBase (TCustom name), env_final
-      | None -> raise (TypeError ("Undeclared struct: " ^ name)))
+      let targs_opt = env.active_targs in
+      let env_clean = { env with active_targs = None } in
+      (match targs_opt with
+      | Some targs ->
+          (match StringMap.find_opt name env_clean.generic_items with
+          | Some (params, IStruct s_decl) ->
+              if List.length targs <> List.length params then raise (TypeError ("Generic arity mismatch for struct " ^ name));
+              let subst = List.fold_left2 (fun acc p t -> StringMap.add p t acc) StringMap.empty params targs in
+              if List.length fields <> List.length s_decl.fields then
+                raise (TypeError ("Arity mismatch for struct " ^ name));
+              let env_final = List.fold_left (fun current_env (f_name, f_expr) ->
+                match List.find_opt (fun (f : Ast.field) -> f.name = f_name) s_decl.fields with
+                | Some f_decl ->
+                    let f_typ = substitute_typ subst f_decl.typ in
+                    let t_expr, env_next = check_expr current_env f_expr (Some f_typ) in
+                    if not (types_compatible f_typ t_expr) then (
+                      print_endline ("Expected: " ^ show_typ f_typ ^ " but got: " ^ show_typ t_expr);
+                      raise (TypeError ("Type mismatch in field " ^ f_name))
+                    );
+                    env_next
+                | None -> raise (TypeError ("Struct " ^ name ^ " missing field " ^ f_name))
+              ) env_clean fields in
+              TBase (TGenericApp (targs, TCustom name)), env_final
+          | _ -> raise (TypeError ("Undeclared generic struct: " ^ name)))
+      | None ->
+          (match StringMap.find_opt name env_clean.structs with
+          | Some s_decl ->
+              if List.length fields <> List.length s_decl.fields then
+                raise (TypeError ("Arity mismatch for struct " ^ name));
+              let env_final = List.fold_left (fun current_env (f_name, f_expr) ->
+                match List.find_opt (fun (f : Ast.field) -> f.name = f_name) s_decl.fields with
+                | Some f_decl ->
+                    let t_expr, env_next = check_expr current_env f_expr (Some f_decl.typ) in
+                    if not (types_compatible f_decl.typ t_expr) then
+                      raise (TypeError ("Type mismatch in field " ^ f_name));
+                    env_next
+                | None -> raise (TypeError ("Struct " ^ name ^ " missing field " ^ f_name))
+              ) env_clean fields in
+              TBase (TCustom name), env_final
+          | None -> raise (TypeError ("Undeclared struct: " ^ name))))
   | EField (e, field_name) ->
       let t_e, env1 = check_expr env e None in
-      let base = match t_e with TRole (b, _) -> b | _ -> t_e in
+      let base = match t_e with TRole (inner, _) -> inner | _ -> t_e in
       (match base with
+      | TBase (TGenericApp (targs, TCustom name)) ->
+          (match StringMap.find_opt name env1.generic_items with
+          | Some (params, IStruct s_decl) ->
+              let subst = List.fold_left2 (fun acc p t -> StringMap.add p t acc) StringMap.empty params targs in
+              (match List.find_opt (fun (f : Ast.field) -> f.name = field_name) s_decl.fields with
+              | Some f_decl -> substitute_typ subst f_decl.typ, env1
+              | None -> raise (TypeError ("Unknown field " ^ field_name ^ " on struct " ^ name)))
+          | _ -> raise (TypeError ("Unknown generic struct: " ^ name)))
       | TBase (TCustom name) ->
           (match StringMap.find_opt name env1.structs with
           | Some s_decl ->
               (match List.find_opt (fun (f : Ast.field) -> f.name = field_name) s_decl.fields with
-              | Some f -> f.typ, env1
-              | None -> raise (TypeError ("Field " ^ field_name ^ " not found in struct " ^ name)))
-          | None -> raise (TypeError ("Unknown struct type for field access")))
+              | Some f_decl -> f_decl.typ, env1
+              | None -> raise (TypeError ("Unknown field " ^ field_name ^ " on struct " ^ name)))
+          | None -> raise (TypeError ("Unknown struct: " ^ name)))
       | _ -> raise (TypeError "Field access on non-struct type"))
   | EMatch (e, arms) ->
       let t_e, env1 = check_expr env e None in
@@ -237,15 +357,29 @@ let rec check_expr env e expected_typ_opt =
       if not (is_int_type t_e || is_bool_type t_e) || not (is_int_type t || is_bool_type t) then
         raise (TypeError "Can only cast between numeric/boolean types");
       t, env1
+  | EGenericApp (targs, e) ->
+      let env_with_targs = { env with active_targs = Some targs } in
+      let t_inner, env_next = check_expr env_with_targs e expected_typ_opt in
+      t_inner, { env_next with active_targs = env.active_targs }
   | EArray elems ->
-      if elems = [] then raise (TypeError "Empty arrays not supported without explicit type annotation");
-      let (t_first, env_first) = check_expr env (List.hd elems) None in
-      let env_final = List.fold_left (fun env_acc elem ->
-        let t_elem, env_next = check_expr env_acc elem None in
-        if not (types_compatible t_first t_elem) then raise (TypeError "Array elements must have the same type");
-        env_next
-      ) env_first (List.tl elems) in
-      TArray t_first, env_final
+      let expected_elem_t = match expected_typ_opt with
+        | Some (TArray t) -> Some t
+        | Some (TRole (TArray t, _)) -> Some t
+        | _ -> None
+      in
+      if elems = [] then (
+        match expected_elem_t with
+        | Some t -> TArray t, env
+        | None -> raise (TypeError "Empty array requires type annotation (e.g. let arr: [u32] = [])")
+      ) else (
+        let t_first, env_first = check_expr env (List.hd elems) expected_elem_t in
+        let env_final = List.fold_left (fun env_acc elem ->
+          let t_elem, env_next = check_expr env_acc elem (Some t_first) in
+          if not (types_compatible t_first t_elem) then raise (TypeError "Array elements must have the same type");
+          env_next
+        ) env_first (List.tl elems) in
+        TArray t_first, env_final
+      )
   | EIndex (arr, i) ->
       let t_arr, env2 = check_expr env arr None in
       let t_i, env3 = check_expr env2 i None in
@@ -255,6 +389,7 @@ let rec check_expr env e expected_typ_opt =
       | TArray t_elem -> t_elem, env3
       | _ -> raise (TypeError "Cannot index non-array type"))
   | ETransfer (e, role) ->
+      if not (StringMap.mem role env.roles) then raise (TypeError ("Undeclared role in transfer: " ^ role));
       let t_e, env1 = check_expr env e None in
       let base_t = match t_e with
         | TRole (inner, _) -> inner
@@ -267,10 +402,15 @@ and check_stmt env stmt =
   match stmt with
   | SDecl { kind; name; typ; init } ->
       let t_init, env1 = check_expr env init typ in
-      (match typ with
+      let typ_with_role = match typ with
+        | Some t -> Some (add_role_if_missing t env1.current_role)
+        | None -> None
+      in
+      (match typ_with_role with
       | Some t -> if not (types_compatible t t_init) then raise (TypeError ("Type mismatch in declaration for " ^ name))
       | None -> ());
-      let t_final = Option.value typ ~default:t_init in
+      let t_final = Option.value typ_with_role ~default:t_init in
+      let t_final = add_role_if_missing t_final env1.current_role in
       if kind = VConst then (
          (match init with
          | ELit _ -> ()
@@ -422,6 +562,17 @@ let check_item env item =
       let t_init, _ = check_expr env init None in
       if not (types_compatible expected_t t_init) then raise (TypeError ("Type mismatch in global " ^ name));
       { env with globals = StringMap.add name expected_t env.globals }
+  | IGeneric (params, i) ->
+      let name = match i with
+      | IFn f -> f.name
+      | IStruct s -> s.name
+      | IEnum e -> e.name
+      | IGlobal g -> g.name
+      | _ -> raise (TypeError "Generics only supported on functions, structs, enums, globals")
+      in
+      { env with generic_items = StringMap.add name (params, i) env.generic_items }
+  | IRole r ->
+      { env with roles = StringMap.add r.name () env.roles }
 
 let check_program prog =
   let env_with_imports = List.fold_left (fun e (imp : import_decl) ->

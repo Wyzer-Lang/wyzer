@@ -38,8 +38,8 @@ This exposes exactly how your data is represented underneath. The compiler calcu
 
 Sometimes, you need to break the pattern. Wyzer gives you two special tools for this so you don't mess up your counting:
 
-1. **The Iota Override (`@=`)**: This lets you jump the `iota` counter to a brand new number. The sequence will continue counting from this new number.
-2. **The Value Override (`$=`)**: This lets you hardcode the final value of a choice, completely ignoring the math! The `iota` counter silently counts up in the background so the next choice in the sequence isn't broken.
+1. **The Iota Override (`@=`)**: This lets you override the `iota` counter. The override happens *before* the math is calculated. You can even use the current `iota` inside your override!
+2. **The Value Override (`$=`)**: This lets you hardcode the final value of a choice, completely ignoring the math! The `iota` counter silently counts up in the background so the next choice in the sequence isn't broken. You can also use `iota` here!
 
 Here is an example of both in action:
 
@@ -53,10 +53,11 @@ enum Flags: u8 (1 << iota) {
    
    Execute,       // iota=3, math: 1<<3 = 8 (The sequence resumes perfectly!)
    
-   // We want to jump far ahead!
-   Custom @= 5,   // Iota Override: iota jumps to 5. math: 1<<5 = 32
-   Next           // iota=6, math: 1<<6 = 64
+   // We want to jump far ahead! We can use iota in our override!
+   // @= runs first, so iota becomes 4+2=6. Then the math runs: 1<<6 = 64
+   Custom @= (iota + 2), 
+   Next           // iota=7, math: 1<<7 = 128
 }
 ```
 
-This ensures there is never any confusion between what the counter is doing and what the final value is!
+This ensures there is never any confusion between what the counter is doing and what the final value is! If you want to "pause" the counter, you can always do `@= (iota - 1)`!

@@ -7,9 +7,9 @@ open Ast
 %token <string> STRING_VAL
 %token <string> IDENT
 
-%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA
-%token U8 U16 U32 U64 I8 I16 I32 I64 BOOL STR
-%token PLUS MINUS STAR SLASH SHL SHR BITAND BITOR
+%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA GENERIC ROLE
+%token U8 U16 U32 U64 USIZE I8 I16 I32 I64 ISIZE BOOL STR
+%token PLUS MINUS STAR SLASH SHL SHR BITAND BITOR AND OR NOT
 %token EQEQ NEQ LT GT LTE GTE EQ FATARROW
 %token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA COLON SEMICOLON DOT COLONCOLON AT AT_EQ DOLLAR_EQ
 %token EOF
@@ -18,6 +18,8 @@ open Ast
 
 %left BITOR
 %left BITAND
+%left OR
+%left AND
 %left EQEQ NEQ LT GT LTE GTE
 %left SHL SHR
 %left PLUS MINUS
@@ -25,6 +27,7 @@ open Ast
 %left AS
 %left DOT
 %left LBRACKET
+%nonassoc NOT UMINUS
 
 %start <Ast.program> program
 %%
@@ -44,6 +47,8 @@ item:
   | e=enum_decl { IEnum e }
   | s=struct_decl { IStruct s }
   | GLOBAL name=IDENT COLON t=typ EQ init=expr SEMICOLON { IGlobal { name; typ = t; init } }
+  | ROLE AT id=IDENT SEMICOLON { IRole { name = id } }
+  | GENERIC LT params=separated_nonempty_list(COMMA, IDENT) GT i=item { IGeneric (params, i) }
 
 struct_decl:
   | STRUCT name=IDENT LBRACE fields=separated_list(COMMA, field) RBRACE { { name; fields } }
@@ -69,10 +74,11 @@ typ:
   | LBRACKET t=typ RBRACKET AT role=IDENT { TRole (TArray t, role) }
 
 base_type:
-  | U8 { TU8 } | U16 { TU16 } | U32 { TU32 } | U64 { TU64 }
-  | I8 { TI8 } | I16 { TI16 } | I32 { TI32 } | I64 { TI64 }
+  | U8 { TU8 } | U16 { TU16 } | U32 { TU32 } | U64 { TU64 } | USIZE { TUSize }
+  | I8 { TI8 } | I16 { TI16 } | I32 { TI32 } | I64 { TI64 } | ISIZE { TISize }
   | BOOL { TBool } | STR { TStr }
   | id=IDENT { TCustom id }
+  | GENERIC LT args=separated_nonempty_list(COMMA, typ) GT t=base_type { TGenericApp (args, t) }
 
 enum_decl:
   | ENUM name=IDENT COLON base_typ=base_type LPAREN iota_expr=expr RPAREN LBRACE members=separated_list(COMMA, enum_member) RBRACE
@@ -104,40 +110,51 @@ stmt:
   | lhs=expr EQ e=expr SEMICOLON { SAssign (lhs, e) }
   | RETURN e=option(expr) SEMICOLON { SReturn e }
   | e=expr SEMICOLON { SExpr e }
-  | WHILE cond=expr b=block { SWhile (cond, b) }
-  | FOR id=IDENT IN e=expr b=block { SFor (id, e, b) }
+  | WHILE cond=expr_no_struct b=block { SWhile (cond, b) }
+  | FOR id=IDENT IN e=expr_no_struct b=block { SFor (id, e, b) }
 
 expr:
-  | e1=expr PLUS e2=expr { EBinOp (e1, Add, e2) }
-  | e1=expr MINUS e2=expr { EBinOp (e1, Sub, e2) }
-  | e1=expr STAR e2=expr { EBinOp (e1, Mul, e2) }
-  | e1=expr SLASH e2=expr { EBinOp (e1, Div, e2) }
-  | e1=expr SHL e2=expr { EBinOp (e1, Shl, e2) }
-  | e1=expr SHR e2=expr { EBinOp (e1, Shr, e2) }
-  | e1=expr BITAND e2=expr { EBinOp (e1, BitAnd, e2) }
-  | e1=expr BITOR e2=expr { EBinOp (e1, BitOr, e2) }
-  | e1=expr EQEQ e2=expr { EBinOp (e1, Eq, e2) }
-  | e1=expr NEQ e2=expr { EBinOp (e1, Neq, e2) }
-  | e1=expr LT e2=expr { EBinOp (e1, Lt, e2) }
-  | e1=expr GT e2=expr { EBinOp (e1, Gt, e2) }
-  | e1=expr LTE e2=expr { EBinOp (e1, Lte, e2) }
-  | e1=expr GTE e2=expr { EBinOp (e1, Gte, e2) }
-  | e=expr AS t=typ { ECast (e, t) }
+  | e=expr_base(expr) { e }
+  | path=module_path LBRACE fields=separated_list(COMMA, field_init) RBRACE { EStruct (List.hd (List.rev path), fields, None) }
+
+expr_no_struct:
+  | e=expr_base(expr_no_struct) { e }
+
+expr_base(X):
+  | NOT e=X { EUnOp (Not, e) }
+  | MINUS e=X %prec UMINUS { EUnOp (Neg, e) }
+  | e1=X PLUS e2=X { EBinOp (e1, Add, e2) }
+  | e1=X MINUS e2=X { EBinOp (e1, Sub, e2) }
+  | e1=X STAR e2=X { EBinOp (e1, Mul, e2) }
+  | e1=X SLASH e2=X { EBinOp (e1, Div, e2) }
+  | e1=X SHL e2=X { EBinOp (e1, Shl, e2) }
+  | e1=X SHR e2=X { EBinOp (e1, Shr, e2) }
+  | e1=X BITAND e2=X { EBinOp (e1, BitAnd, e2) }
+  | e1=X BITOR e2=X { EBinOp (e1, BitOr, e2) }
+  | e1=X AND e2=X { EBinOp (e1, And, e2) }
+  | e1=X OR e2=X { EBinOp (e1, Or, e2) }
+  | e1=X EQEQ e2=X { EBinOp (e1, Eq, e2) }
+  | e1=X NEQ e2=X { EBinOp (e1, Neq, e2) }
+  | e1=X LT e2=X { EBinOp (e1, Lt, e2) }
+  | e1=X GT e2=X { EBinOp (e1, Gt, e2) }
+  | e1=X LTE e2=X { EBinOp (e1, Lte, e2) }
+  | e1=X GTE e2=X { EBinOp (e1, Gte, e2) }
+  | e=X AS t=typ { ECast (e, t) }
   | OK LPAREN e=expr RPAREN { EOk (e, None) }
   | ERR LPAREN e=expr RPAREN { EErr (e, None) }
   | id1=IDENT COLONCOLON rest=module_path { EPathCall (id1 :: rest, []) }
   | IOTA { EVar "iota" }
-  | IF cond=expr thn=block els=option(ELSE e=else_branch {e}) { EIf (cond, thn, els) }
-  | e=expr DOT f=IDENT { EField (e, f) }
-  | name=IDENT LBRACE fields=separated_list(COMMA, field_init) RBRACE { EStruct (name, fields, None) }
-  | MATCH e=expr LBRACE arms=nonempty_list(match_arm) RBRACE { EMatch (e, arms) }
+  | IF cond=expr_no_struct thn=block els=option(ELSE e=else_branch {e}) { EIf (cond, thn, els) }
+  | e=X DOT f=IDENT { EField (e, f) }
+  | MATCH e=expr_no_struct LBRACE arms=nonempty_list(match_arm) RBRACE { EMatch (e, arms) }
   | path=module_path LPAREN args=separated_list(COMMA, expr) RPAREN
     { match path with
       | [id] -> ECall (id, args)
       | _ -> EPathCall (path, args) }
   | LBRACKET elems=separated_list(COMMA, expr) RBRACKET { EArray elems }
   | TRANSFER LPAREN e=expr COMMA r=IDENT RPAREN { ETransfer (e, r) }
-  | e1=expr LBRACKET e2=expr RBRACKET %prec LBRACKET { EIndex (e1, e2) }
+  | e1=X LBRACKET e2=expr RBRACKET %prec LBRACKET { EIndex (e1, e2) }
+  | GENERIC LT args=separated_nonempty_list(COMMA, typ) GT e=X { EGenericApp (args, e) }
   | l=literal { ELit l }
   | id=IDENT { EVar id }
   | LPAREN e=expr RPAREN { e }
@@ -163,7 +180,8 @@ pattern:
 
 else_branch:
   | b=block { b }
-  | IF cond=expr thn=block els=option(ELSE e=else_branch {e}) { { stmts = []; ret_expr = Some (EIf (cond, thn, els)) } }
+  | IF cond=expr_no_struct thn=block els=option(ELSE e=else_branch {e}) { { stmts = []; ret_expr = Some (EIf (cond, thn, els)) } }
+  | MATCH e=expr_no_struct LBRACE arms=nonempty_list(match_arm) RBRACE { { stmts = []; ret_expr = Some (EMatch (e, arms)) } }
 
 literal:
   | v=INT t=option(int_suffix) { LInt (v, t) }

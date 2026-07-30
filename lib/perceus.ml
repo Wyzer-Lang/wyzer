@@ -8,6 +8,7 @@ let rec free_vars_expr (e: expr) : StringSet.t =
   | EVar x -> StringSet.singleton x
   | ECall (_, args) | EPathCall (_, args) ->
       List.fold_left (fun acc arg -> StringSet.union acc (free_vars_expr arg)) StringSet.empty args
+  | EUnOp (_, e) -> free_vars_expr e
   | EBinOp (e1, _, e2) -> StringSet.union (free_vars_expr e1) (free_vars_expr e2)
   | EIf (cond, thn, els) ->
       let s1 = free_vars_expr cond in
@@ -26,6 +27,7 @@ let rec free_vars_expr (e: expr) : StringSet.t =
       ) StringSet.empty arms in
       StringSet.union s1 s2
   | ECast (e, _) -> free_vars_expr e
+  | EGenericApp (_, e) -> free_vars_expr e
   | EArray elems ->
       List.fold_left (fun acc elem -> StringSet.union acc (free_vars_expr elem)) StringSet.empty elems
   | EIndex (e, i) ->
@@ -91,6 +93,7 @@ let rec transform_expr (live_out: StringSet.t) (e: expr) : expr =
       let new_arms = List.map (fun (pat, arm_e) -> (pat, transform_expr live_out arm_e)) arms in
       EMatch (transform_expr live_out match_e, new_arms)
   | ECast (e, t) -> ECast (transform_expr live_out e, t)
+  | EGenericApp (targs, e) -> EGenericApp (targs, transform_expr live_out e)
   | EArray elems -> EArray (List.map (transform_expr live_out) elems)
   | EIndex (e, i) -> EIndex (transform_expr live_out e, transform_expr live_out i)
   | ETransfer (e, role) -> ETransfer (transform_expr live_out e, role)
@@ -145,9 +148,10 @@ and transform_block (live_out: StringSet.t) (b: block) : block =
   
   { stmts = stmts' @ drops; ret_expr = ret_expr' }
 
-let transform_item (i: item) : item =
+let rec transform_item (i: item) : item =
   match i with
   | IFn f -> IFn { f with body = Option.map (transform_block StringSet.empty) f.body }
+  | IGeneric (params, inner) -> IGeneric (params, transform_item inner)
   | _ -> i
 
 let transform_program (p: program) : program =

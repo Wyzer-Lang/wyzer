@@ -1,0 +1,11 @@
+role @Client;
+role @Server;
+
+global SECRET: u32@Server = 42u32;
+
+fn print_secret() @ Client {
+    // Should fail because SECRET is a Server variable but we are in Client!
+    let data = SECRET;
+}
+
+fn main() { }

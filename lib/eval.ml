@@ -140,6 +140,26 @@ let rec eval_expr env e =
         VUnit
       ) else
         raise (EvalError "Unknown path call")
+  | EUnOp (Not, e) ->
+      (match eval_expr env e with
+      | VBool b -> VBool (not b)
+      | _ -> raise (EvalError "Expected bool for Not"))
+  | EUnOp (Neg, e) ->
+      (match eval_expr env e with
+      | VInt i -> VInt (Int64.neg i)
+      | _ -> raise (EvalError "Expected int for Neg"))
+  | EBinOp (e1, And, e2) ->
+      let v1 = eval_expr env e1 in
+      (match v1 with
+      | VBool false -> VBool false
+      | VBool true -> eval_expr env e2
+      | _ -> raise (EvalError "Expected bool for And"))
+  | EBinOp (e1, Or, e2) ->
+      let v1 = eval_expr env e1 in
+      (match v1 with
+      | VBool true -> VBool true
+      | VBool false -> eval_expr env e2
+      | _ -> raise (EvalError "Expected bool for Or"))
   | EBinOp (e1, op, e2) ->
       let v1 = eval_expr env e1 in
       let v2 = eval_expr env e2 in
@@ -159,7 +179,8 @@ let rec eval_expr env e =
           | Lt -> VBool (i1 < i2)
           | Gt -> VBool (i1 > i2)
           | Lte -> VBool (i1 <= i2)
-          | Gte -> VBool (i1 >= i2))
+          | Gte -> VBool (i1 >= i2)
+          | And | Or -> raise (EvalError "Invalid operator on integers"))
       | VBool b1, VBool b2 ->
           (match op with
           | Eq -> VBool (b1 = b2)
@@ -283,23 +304,8 @@ let rec eval_expr env e =
           | None -> raise (EvalError "Dup on freed pointer"))
       | _ -> ());
       v
-  | ECast (e, typ) ->
-      let v = eval_expr env e in
-      (match v, typ with
-      | VInt i, TBase TU8 -> VInt (Int64.logand i 0xFFL)
-      | VInt i, TBase TI8 -> 
-          let m = Int64.logand i 0xFFL in
-          if Int64.compare m 0x7FL > 0 then VInt (Int64.sub m 0x100L) else VInt m
-      | VInt i, TBase TU16 -> VInt (Int64.logand i 0xFFFFL)
-      | VInt i, TBase TI16 ->
-          let m = Int64.logand i 0xFFFFL in
-          if Int64.compare m 0x7FFFL > 0 then VInt (Int64.sub m 0x10000L) else VInt m
-      | VInt i, TBase TU32 -> VInt (Int64.logand i 0xFFFFFFFFL)
-      | VInt i, TBase TI32 ->
-          let m = Int64.logand i 0xFFFFFFFFL in
-          if Int64.compare m 0x7FFFFFFFL > 0 then VInt (Int64.sub m 0x100000000L) else VInt m
-      | VInt i, _ -> VInt i
-      | _ -> v)
+  | ECast (e, _) -> eval_expr env e
+  | EGenericApp (_, e) -> eval_expr env e
   | EArray elems ->
       let evaled_elems = List.map (eval_expr env) elems in
       VArray (Array.of_list evaled_elems)
@@ -400,7 +406,7 @@ let eval_program prog =
     in
     { e with imports = StringMap.add prefix imp.path e.imports }
   ) empty_env prog.Ast.imports in
-  let env = List.fold_left (fun e item ->
+  let rec eval_item e item =
     match item with
     | IFn f -> { e with funcs = StringMap.add f.name f e.funcs }
     | IEnum en -> { e with enums = StringMap.add en.name en e.enums }
@@ -408,7 +414,10 @@ let eval_program prog =
     | IGlobal { name; init; _ } ->
         let v = eval_expr e init in
         { e with globals = StringMap.add name (ref v) e.globals }
-  ) env_with_imports prog.Ast.items in
+    | IGeneric (_, i) -> eval_item e i
+    | IRole _ -> e
+  in
+  let env = List.fold_left eval_item env_with_imports prog.Ast.items in
   match StringMap.find_opt "main" env.funcs with
   | Some main_fn ->
       (try ignore (eval_block env (Option.get main_fn.body)) with Return _ -> ())

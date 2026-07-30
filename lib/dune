@@ -5,6 +5,7 @@
  (preprocess (pps ppx_deriving.std)))
 
 (menhir
+ (flags --explain)
  (modules parser))
 
 (ocamllex lexer)

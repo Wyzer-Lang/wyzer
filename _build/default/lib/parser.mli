@@ -4,6 +4,7 @@
 type token = 
   | WHILE
   | VAR
+  | USIZE
   | UNDERSCORE
   | U8
   | U64
@@ -19,12 +20,15 @@ type token =
   | SHL
   | SEMICOLON
   | RPAREN
+  | ROLE
   | RETURN
   | RESULT
   | RBRACKET
   | RBRACE
   | PLUS
+  | OR
   | OK
+  | NOT
   | NEQ
   | MINUS
   | MATCH
@@ -34,6 +38,7 @@ type token =
   | LET
   | LBRACKET
   | LBRACE
+  | ISIZE
   | IOTA
   | INT of (int64)
   | IN
@@ -47,6 +52,7 @@ type token =
   | GTE
   | GT
   | GLOBAL
+  | GENERIC
   | FOR
   | FN
   | FATARROW
@@ -70,6 +76,7 @@ type token =
   | AT_EQ
   | AT
   | AS
+  | AND
 
 (* This exception is raised by the monolithic API functions. *)
 

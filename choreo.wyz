@@ -1,0 +1,12 @@
+role @Client;
+role @Server;
+
+fn get_data() @ Client -> u32 {
+    return 42;
+}
+
+fn main() @ Server {
+    // Server calls Client function. It returns u32@Client.
+    // Server cannot read it directly, so it must transfer it to Server!
+    let data: u32 = transfer(get_data(), Server);
+}
