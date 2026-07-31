@@ -283,7 +283,7 @@ let rec check_expr_impl env e expected_typ_opt =
       let rec resolve_module current_env p =
         match p with
         | [] -> current_env
-        | "mod" :: rest -> resolve_module current_env rest
+        | "bundle" :: rest -> resolve_module current_env rest
         | mod_name :: rest ->
             match StringMap.find_opt mod_name current_env.modules with
             | Some sub_env -> resolve_module sub_env rest
@@ -795,7 +795,7 @@ and check_program_inner env prog =
     in
     let e1 = { e with imports = StringMap.add prefix imp.path e.imports } in
     match imp.path with
-    | "mod" :: rest ->
+    | "bundle" :: rest ->
         let mod_name = List.hd rest in
         if StringMap.mem mod_name e1.modules then e1 else (
           let mod_path = Filename.concat e1.project_root (mod_name ^ ".wyz") in
