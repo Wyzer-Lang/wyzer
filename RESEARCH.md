@@ -94,6 +94,28 @@ Interrupt handlers stop the program at random times. They don't follow a strict 
 
 **Unsolved problem:** What if an interrupt handler needs to stop the script completely and restart it later? We are still researching this. See Section 7.
 
+### Metaprogramming as Choreography (The Compiler as a Node)
+
+Traditional languages introduce entirely separate sub-languages or disjoint evaluation phases to handle metaprogramming (e.g., C preprocessor macros, Rust `macro_rules!`, or Zig's `comptime`). This creates a semantic bifurcation: the language executed by the compiler at build-time is fundamentally distinct from the language executed by the runtime.
+
+Wyzer unifies these concepts by treating **the Compiler itself as just another node in the choreography**. By formalizing the Compiler as an implicit, omnipresent role (e.g., `@Compiler`), metaprogramming simply becomes a standard choreographic `transfer` operation targeted at the compile-time node.
+
+**Theoretical Formulation**: Let $C$ be the set of nodes in a choreography. We define $C = \{N_1, N_2, \dots, N_k\} \cup \{N_{compiler}\}$.
+When an expression evaluates to a value of type $T @ N_{compiler}$, the Endpoint Projection (EPP) engine must route the evaluation of that expression to the compiler's internal evaluator during the compilation phase, rather than projecting it into the emitted binaries.
+
+For example, string interpolation and static code generation can be expressed dynamically:
+```wyzer
+// The format string requires information known only at compile time.
+// By transferring the expression to the Compiler, it is evaluated instantly during the build.
+let interpolated: str@Client = transfer(f"Build Date: {get_date()}", Compiler);
+```
+In this model:
+1. **Zero New Syntax**: Metaprogramming does not require distinct keyword modifiers (like `const fn` or `comptime`).
+2. **Phase Separation via Topology**: The staging of computation (build-time vs. run-time) is elegantly subsumed by spatial topology. The temporal boundary of compilation is just a spatial boundary to the `@Compiler` role.
+3. **Trace Equivalence**: The typechecker ensures that the Compiler role satisfies trace equivalence identically to physical nodes, preventing malformed macro expansions.
+
+This establishes a novel isomorphism between **multi-staged programming** and **choreographic programming**, reducing the overall conceptual surface area of the language.
+
 ### Honest scope note
 Building an entire OS this way is a long-term goal. For now, we want to prove this works for regular programs (threads talking safely). This is useful on its own. Later, we can try it on kernels, high level softwares and hardware (CPUs, GPUs, FPGAs...).
 
