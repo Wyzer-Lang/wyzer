@@ -237,3 +237,25 @@ Since we haven't written the code yet, the best ways to help are:
 - Draw up ideas for role-type syntax and ask for feedback.
 
 We will update this document as we make decisions. If you see a mistake, please let us know.
+
+---
+
+## 10. Related Work & Theoretical Influences
+
+Wyzer does not exist in a vacuum. It heavily builds upon and synthesizes concepts from several foundational research projects in the distributed programming community, particularly the work surrounding Fabrizio Montesi and the multiparty types community.
+
+### 10.1 Choral and the CHOCO Project
+The **CHOCO** project (and the resulting **Choral** language) identified a critical gap: choreographies were traditionally understood via process calculi and automata, alienating mainstream software engineers. 
+Choral bridged this gap by extending Object-Oriented Java with higher-kinded types, expressing collaborative distributed objects at the type level, which a compiler then projects into pure-Java libraries per role. 
+
+**Wyzer's relationship:** Wyzer shares Choral's mission to bridge choreography with mainstream development. However, rather than utilizing higher-kinded object-oriented types, Wyzer utilizes a functional/imperative foundation rooted in linear memory types (`T@Role`). While Choral produces libraries to be consumed by external Java code, Wyzer acts as a standalone, bare-metal systems compiler that produces standalone physical binaries.
+
+### 10.2 The Choreographic and Multitier Isomorphism (ECOOP 2021)
+In the seminal paper *"Multiparty Languages: The Choreographic and Multitier Cases"* (Giallorenzo, Montesi, Peressotti, Richter, Salvaneschi, Weisenburger - ECOOP 2021), the authors formally proved the underlying isomorphism between **Choreographic Programming** (global, top-down protocol descriptions) and **Multitier Programming** (languages like ScalaLoci or Eliom, where computation transitions across physical tiers via location annotations). 
+
+**Wyzer's relationship:** Wyzer is the ultimate architectural realization of this paper's thesis. At the syntax level, Wyzer behaves like a Multitier language (developers declare variables at specific tiers via `T@Role` and transition via `transfer`). However, under the hood, the Endpoint Projection (EPP) engine and the typechecker enforce strict Choreographic Trace Equivalence. By marrying multitier developer experience with choreographic compilation safety, Wyzer seamlessly blends the two paradigms into one cohesive language.
+
+### 10.3 CHORDS (Choreographies for Distributed Systems)
+The **CHORDS** initiative (an ERC Consolidator Grant project) focuses on advancing the reasoning, expressivity, and development tooling of distributed systems through choreographies. 
+
+**Wyzer's relationship:** Wyzer's innovations—specifically **Knowledge of Choice via AST Synthesis** and the unification of **Linear Memory Models (Perceus) with Choreography**—are direct theoretical contributions to the expressivity goals outlined by the CHORDS project. By actively synthesizing network protocols at the AST level rather than passively verifying them, Wyzer massively expands the expressiveness and usability of choreographic systems for everyday systems engineers.
