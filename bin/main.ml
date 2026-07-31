@@ -40,7 +40,29 @@ let process_file filename =
     | None -> prog_comptime
     in
     let prog_transformed = Perceus.transform_program prog_to_run in
-    Eval.eval_program project_root prog_transformed (Option.value !target_role_opt ~default:"Poly")
+    
+    let command = if Array.length Sys.argv > 1 then Sys.argv.(1) else "run" in
+    if command = "build" then (
+      let role = Option.value !target_role_opt ~default:"Poly" in
+      let c_code = Codegen.generate_c prog_transformed role in
+      let base_name = Filename.remove_extension (Filename.basename filename) in
+      let out_c = sprintf "%s_%s.c" base_name role in
+      let out_bin = sprintf "%s_%s" base_name role in
+      
+      let oc = open_out out_c in
+      fprintf oc "%s\n" c_code;
+      close_out oc;
+      
+      printf "Generated %s. Compiling...\n" out_c;
+      let gcc_cmd = sprintf "gcc -O3 %s -o %s" out_c out_bin in
+      let status = Sys.command gcc_cmd in
+      if status = 0 then
+        printf "Successfully built %s\n" out_bin
+      else
+        fprintf stderr "Error: gcc compilation failed\n"
+    ) else (
+      Eval.eval_program project_root prog_transformed (Option.value !target_role_opt ~default:"Poly")
+    )
   with
   | Typechecker.TypeError msg ->
       fprintf stderr "Type Error: %s\n" msg;
@@ -50,17 +72,22 @@ let process_file filename =
       exit (-1)
 
 let () =
-  if Array.length Sys.argv < 2 then (
-    fprintf stderr "Usage: %s <file.wyz> [--role <RoleName>]\n" Sys.argv.(0);
+  if Array.length Sys.argv < 3 then (
+    fprintf stderr "Usage: %s <run|build> <file.wyz> [--role <RoleName>]\n" Sys.argv.(0);
+    exit 1
+  );
+  let command = Sys.argv.(1) in
+  if command <> "run" && command <> "build" then (
+    fprintf stderr "Unknown command: %s\n" command;
     exit 1
   );
   let filename = ref "" in
-  for i = 1 to Array.length Sys.argv - 1 do
-    if Sys.argv.(i) <> "--role" && (i = 1 || Sys.argv.(i-1) <> "--role") then
+  for i = 2 to Array.length Sys.argv - 1 do
+    if Sys.argv.(i) <> "--role" && (i = 2 || Sys.argv.(i-1) <> "--role") then
       filename := Sys.argv.(i)
   done;
   if !filename = "" then (
-    fprintf stderr "Usage: %s <file.wyz> [--role <RoleName>]\n" Sys.argv.(0);
+    fprintf stderr "Usage: %s <run|build> <file.wyz> [--role <RoleName>]\n" Sys.argv.(0);
     exit 1
   );
   process_file !filename
