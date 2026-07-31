@@ -116,6 +116,29 @@ In this model:
 
 This establishes a novel isomorphism between **multi-staged programming** and **choreographic programming**, reducing the overall conceptual surface area of the language.
 
+### Knowledge of Choice via AST Synthesis
+
+In classical distributed systems, **Knowledge of Choice** is a major source of deadlocks: if Node A evaluates a condition that dictates the control flow of Node B, Node A must explicitly send the result of that condition to Node B, and Node B must block to receive it before branching. 
+Most choreographic languages (like Jolie or Chor) handle this by either forcing the programmer to write explicit network transfers for the condition, or by strictly enforcing *Choreographic Trace Equivalence* at compile-time (rejecting the program if the footprint of operations doesn't match perfectly).
+
+Wyzer takes a radically different approach: **Automatic Branch Synchronization via AST Synthesis**. 
+
+**Theoretical Formulation**: Given an expression $E = \text{if } C \text{ then } B_1 \text{ else } B_2$, where $\text{role}(C) = N_{evaluator}$, and the set of roles participating in $B_1 \cup B_2$ is $R_{participants}$.
+During Endpoint Projection (EPP), for any target role $N_{target} \in R_{participants} \setminus \{N_{evaluator}\}$:
+1. The projection engine automatically erases the evaluation of $C$ for $N_{target}$.
+2. It synthesizes a blocking network receive operation: $C_{projected} \leftarrow \text{ENetRecv}(N_{evaluator})$.
+3. For $N_{evaluator}$, it synthesizes $O(|R_{participants}| - 1)$ network send operations, injecting $\text{ENetSend}(N_{target}, C)$ identically into the preambles of both projected blocks $B_1$ and $B_2$.
+
+This allows the programmer to write a single, centralized control flow graph:
+```wyzer
+// The condition is evaluated purely on the Client.
+if (x: u32@Client) > 5 {
+    // The Server executes this branch without explicit network code!
+    std::io::println("Greater!" @ Server); 
+}
+```
+The Wyzer compiler guarantees absolute trace equivalence by automatically constructing the required synchronization protocol at the AST level. This elevates choreography from a *verification* tool into an *active compilation* mechanism, entirely removing the class of "Asymmetric Choreography" errors from the developer experience.
+
 ### Honest scope note
 Building an entire OS this way is a long-term goal. For now, we want to prove this works for regular programs (threads talking safely). This is useful on its own. Later, we can try it on kernels, high level softwares and hardware (CPUs, GPUs, FPGAs...).
 
