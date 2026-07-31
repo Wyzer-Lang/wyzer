@@ -447,7 +447,7 @@ let rec check_expr_impl env e expected_typ_opt =
             raise (TypeError "Asymmetric choreography: 'if' and 'else' branches must have identical transfer footprints");
           if not (types_compatible (Option.value t_thn ~default:(TBase TUnit)) (Option.value t_els ~default:(TBase TUnit))) then 
             raise (TypeError "if and else branches must have same return type");
-          Option.value t_thn ~default:(TBase TU8), { env_els with vars = env_thn.vars }
+          Option.value t_thn ~default:(TBase TUnit), { env_els with vars = env_thn.vars }
       | None ->
           if trace_thn <> [] then
             raise (TypeError "Asymmetric choreography: 'if' without 'else' cannot contain 'transfer' operations");
