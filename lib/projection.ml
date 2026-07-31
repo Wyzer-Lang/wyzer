@@ -193,6 +193,7 @@ let rec project_item target_role i =
       (match project_item target_role inner with
       | Some p_inner -> Some (IGeneric (params, p_inner))
       | None -> None)
+  | IMod _ -> Some i
 
 let project_program p target_role =
   let p_items = List.filter_map (project_item target_role) p.items in

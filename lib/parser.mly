@@ -8,7 +8,7 @@ open Ast
 %token <string> FSTRING_VAL
 %token <string> IDENT
 
-%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA GENERIC ROLE PUB TRAIT IMPL
+%token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA GENERIC ROLE PUB TRAIT IMPL MOD
 %token U8 U16 U32 U64 USIZE I8 I16 I32 I64 ISIZE BOOL STR
 %token PLUS MINUS STAR SLASH SHL SHR BITAND BITOR AND OR NOT
 %token EQEQ NEQ LT GT LTE GTE EQ FATARROW
@@ -61,6 +61,7 @@ item:
   | ROLE AT id=IDENT SEMICOLON { IRole { name = id; properties = [] } }
   | ROLE AT id=IDENT LBRACE props=separated_list(COMMA, field_init) RBRACE { IRole { name = id; properties = props } }
   | GENERIC LT params=separated_nonempty_list(COMMA, IDENT) GT i=item { IGeneric (params, i) }
+  | v=visibility MOD name=IDENT SEMICOLON { IMod { is_pub = v; name } }
 
 struct_decl:
   | v=visibility STRUCT name=IDENT LBRACE fields=separated_list(COMMA, field) RBRACE { { is_pub = v; name; fields } }

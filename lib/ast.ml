@@ -156,6 +156,12 @@ type impl_decl = {
 }
 [@@deriving show, eq]
 
+type mod_decl = {
+  is_pub: bool;
+  name: string;
+}
+[@@deriving show, eq]
+
 type item =
   | IFn of fn_decl
   | IEnum of enum_decl
@@ -165,6 +171,7 @@ type item =
   | IRole of role_decl
   | ITrait of trait_decl
   | IImpl of impl_decl
+  | IMod of mod_decl
 [@@deriving show, eq]
 
 type import_decl = {

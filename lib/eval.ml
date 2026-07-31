@@ -64,6 +64,8 @@ type env = {
   enums: enum_decl StringMap.t;
   imports: string list StringMap.t;
   current_role: string;
+  modules: env StringMap.t;
+  project_root: string;
 }
 
 let ipc_send_counter = ref 0
@@ -76,6 +78,8 @@ let empty_env = {
   enums = StringMap.empty;
   imports = StringMap.empty;
   current_role = "Poly";
+  modules = StringMap.empty;
+  project_root = Sys.getcwd ();
 }
 
 exception EvalError of string
@@ -142,26 +146,47 @@ let rec eval_expr env e =
         | Some actual_module -> actual_module @ (List.tl path)
         | None -> path (* Assume it's an absolute path to a root library *)
       in
-      if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] then (
-        let is_nl = resolved_path = ["std"; "io"; "println"] in
-        let arg = eval_expr env (List.hd args) in
-        print_val stdout is_nl arg;
-        VUnit
-      ) else if resolved_path = ["std"; "io"; "eprintln"] || resolved_path = ["std"; "io"; "eprint"] then (
-        let is_nl = resolved_path = ["std"; "io"; "eprintln"] in
-        let arg = eval_expr env (List.hd args) in
-        print_val stderr is_nl arg;
-        VUnit
-      ) else if resolved_path = ["std"; "hw"; "bind_interrupt"] then (
-        let irq_val = eval_expr env (List.hd args) in
-        let handler_name = match List.nth args 1 with
-          | EVar name -> name
-          | _ -> "unknown"
-        in
-        print_endline ("[Hardware] Bound IRQ " ^ show_value irq_val ^ " to " ^ handler_name);
-        VUnit
-      ) else
-        raise (EvalError "Unknown path call")
+      let rec resolve_module current_env p =
+        match p with
+        | [] -> current_env
+        | "crate" :: rest -> resolve_module current_env rest
+        | mod_name :: rest ->
+            match StringMap.find_opt mod_name current_env.modules with
+            | Some sub_env -> resolve_module sub_env rest
+            | None -> raise (EvalError ("Module not found at runtime: " ^ mod_name))
+      in
+      if List.length resolved_path > 0 && List.hd resolved_path = "std" then (
+        if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] then (
+          let is_nl = resolved_path = ["std"; "io"; "println"] in
+          let arg = eval_expr env (List.hd args) in
+          print_val stdout is_nl arg;
+          VUnit
+        ) else if resolved_path = ["std"; "io"; "eprintln"] || resolved_path = ["std"; "io"; "eprint"] then (
+          let is_nl = resolved_path = ["std"; "io"; "eprintln"] in
+          let arg = eval_expr env (List.hd args) in
+          print_val stderr is_nl arg;
+          VUnit
+        ) else if resolved_path = ["std"; "hw"; "bind_interrupt"] then (
+          let irq_val = eval_expr env (List.hd args) in
+          let handler_name = match List.nth args 1 with
+            | EVar name -> name
+            | _ -> "unknown"
+          in
+          print_endline ("[Hardware] Bound IRQ " ^ show_value irq_val ^ " to " ^ handler_name);
+          VUnit
+        ) else
+          raise (EvalError ("Unknown std path call: " ^ String.concat "::" resolved_path))
+      ) else (
+        let module_path = List.rev (List.tl (List.rev resolved_path)) in
+        let func_name = List.hd (List.rev resolved_path) in
+        let target_env = resolve_module env module_path in
+        match StringMap.find_opt func_name target_env.funcs with
+        | Some fn ->
+            let temp_name = String.concat "::" resolved_path in
+            let env_with_fn = { env with funcs = StringMap.add temp_name fn env.funcs } in
+            eval_expr env_with_fn (ECall (temp_name, args))
+        | None -> raise (EvalError ("Function not found in module at runtime: " ^ func_name))
+      )
   | EUnOp (Not, e) ->
       (match eval_expr env e with
       | VBool b -> VBool (not b)
@@ -466,14 +491,32 @@ and eval_block env block =
   let ret_val = Option.map (eval_expr env_final) block.ret_expr in
   env_final, ret_val
 
-let build_env prog =
+let rec build_env env prog =
   let env_with_imports = List.fold_left (fun e (imp : import_decl) ->
     let prefix = match imp.alias with
       | Some a -> a
       | None -> List.hd (List.rev imp.path)
     in
-    { e with imports = StringMap.add prefix imp.path e.imports }
-  ) empty_env prog.Ast.imports in
+    let e1 = { e with imports = StringMap.add prefix imp.path e.imports } in
+    match imp.path with
+    | "crate" :: rest ->
+        let mod_name = List.hd rest in
+        if StringMap.mem mod_name e1.modules then e1 else (
+          let mod_path = Filename.concat e1.project_root (mod_name ^ ".wyz") in
+          if Sys.file_exists mod_path then
+            let inx = open_in mod_path in
+            let lexbuf = Lexing.from_channel inx in
+            lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
+            let parsed_prog = try Parser.program Lexer.read lexbuf with
+              | _ -> close_in inx; raise (EvalError ("Failed to parse imported module " ^ mod_name))
+            in
+            close_in inx;
+            let mod_env = build_env { empty_env with project_root = e1.project_root } parsed_prog in
+            { e1 with modules = StringMap.add mod_name mod_env e1.modules }
+          else e1
+        )
+    | _ -> e1
+  ) env prog.Ast.imports in
   let rec eval_item e item =
     match item with
     | IFn f -> { e with funcs = StringMap.add f.name f e.funcs }
@@ -485,11 +528,24 @@ let build_env prog =
     | IGeneric (_, i) -> eval_item e i
     | IRole _ -> e
     | ITrait _ | IImpl _ -> e
+    | IMod m ->
+        let mod_path = Filename.concat e.project_root (m.name ^ ".wyz") in
+        if not (Sys.file_exists mod_path) then
+          raise (EvalError ("Module file not found: " ^ mod_path));
+        let inx = open_in mod_path in
+        let lexbuf = Lexing.from_channel inx in
+        lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
+        let parsed_prog = try Parser.program Lexer.read lexbuf with
+          | _ -> close_in inx; raise (EvalError ("Failed to parse module " ^ m.name))
+        in
+        close_in inx;
+        let mod_env = build_env { empty_env with project_root = e.project_root } parsed_prog in
+        { e with modules = StringMap.add m.name mod_env e.modules }
   in
   List.fold_left eval_item env_with_imports prog.Ast.items
 
-let eval_program prog role =
-  let env = build_env prog in
+let eval_program project_root prog role =
+  let env = build_env { empty_env with project_root = project_root } prog in
   let env = { env with current_role = role } in
   match StringMap.find_opt "main" env.funcs with
   | Some main_fn ->

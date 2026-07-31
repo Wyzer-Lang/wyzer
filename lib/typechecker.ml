@@ -19,6 +19,8 @@ type env = {
   trace: (string * typ) list;
   traits: trait_decl StringMap.t;
   impls: impl_decl list;
+  modules: env StringMap.t;
+  project_root: string;
 }
 
 let empty_env = {
@@ -36,6 +38,8 @@ let empty_env = {
   trace = [];
   traits = StringMap.empty;
   impls = [];
+  modules = StringMap.empty;
+  project_root = Sys.getcwd ();
 }
 
 exception TypeError of string
@@ -276,31 +280,52 @@ let rec check_expr_impl env e expected_typ_opt =
         | Some actual_module -> actual_module @ (List.tl path)
         | None -> path
       in
-      if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] || resolved_path = ["std"; "io"; "eprintln"] || resolved_path = ["std"; "io"; "eprint"] then (
-        if List.length args <> 1 then raise (TypeError ("print/println expects 1 argument"));
-        let arg_t, env_next = check_expr env (List.hd args) None in
-        if not (is_printable arg_t) then
-          raise (TypeError "print/println argument must be printable");
-        TBase TUnit, env_next
-      ) else if resolved_path = ["std"; "hw"; "bind_interrupt"] then (
-        if List.length args <> 2 then raise (TypeError ("bind_interrupt expects 2 arguments"));
-        let t_irq, env_next = check_expr env (List.hd args) None in
-        if not (is_int_type t_irq) then raise (TypeError "IRQ number must be an integer");
-        let handler_arg = List.nth args 1 in
-        (match handler_arg with
-         | EVar name ->
-             (match StringMap.find_opt name env_next.funcs with
-              | Some fn ->
-                  let expected_role = "ISR" in
-                  if Option.value fn.role ~default:"Main" <> expected_role then
-                    raise (TypeError ("Interrupt handler must have role " ^ expected_role));
-                  if List.length fn.params <> 0 then
-                    raise (TypeError "Interrupt handler must not take parameters");
-                  TBase TUnit, env_next
-              | None -> raise (TypeError ("Interrupt handler must be a function: " ^ name)))
-         | _ -> raise (TypeError "Interrupt handler must be a function reference by name"))
-      ) else
-        raise (TypeError ("Undefined path call: " ^ String.concat "::" resolved_path))
+      let rec resolve_module current_env p =
+        match p with
+        | [] -> current_env
+        | "crate" :: rest -> resolve_module current_env rest
+        | mod_name :: rest ->
+            match StringMap.find_opt mod_name current_env.modules with
+            | Some sub_env -> resolve_module sub_env rest
+            | None -> raise (TypeError ("Module not found: " ^ mod_name))
+      in
+      if List.length resolved_path > 0 && List.hd resolved_path = "std" then (
+        if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] || resolved_path = ["std"; "io"; "eprintln"] || resolved_path = ["std"; "io"; "eprint"] then (
+          if List.length args <> 1 then raise (TypeError ("print/println expects 1 argument"));
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          if not (is_printable arg_t) then
+            raise (TypeError "print/println argument must be printable");
+          TBase TUnit, env_next
+        ) else if resolved_path = ["std"; "hw"; "bind_interrupt"] then (
+          if List.length args <> 2 then raise (TypeError ("bind_interrupt expects 2 arguments"));
+          let t_irq, env_next = check_expr env (List.hd args) None in
+          if not (is_int_type t_irq) then raise (TypeError "IRQ number must be an integer");
+          let handler_arg = List.nth args 1 in
+          (match handler_arg with
+           | EVar name ->
+               (match StringMap.find_opt name env_next.funcs with
+                | Some fn ->
+                    let expected_role = "ISR" in
+                    if Option.value fn.role ~default:"Main" <> expected_role then
+                      raise (TypeError ("Interrupt handler must have role " ^ expected_role));
+                    if List.length fn.params <> 0 then
+                      raise (TypeError "Interrupt handler must not take parameters");
+                    TBase TUnit, env_next
+                | None -> raise (TypeError ("Interrupt handler must be a function: " ^ name)))
+           | _ -> raise (TypeError "Interrupt handler must be a function reference by name"))
+        ) else
+          raise (TypeError ("Undefined std path call: " ^ String.concat "::" resolved_path))
+      ) else (
+        let module_path = List.rev (List.tl (List.rev resolved_path)) in
+        let func_name = List.hd (List.rev resolved_path) in
+        let target_env = resolve_module env module_path in
+        match StringMap.find_opt func_name target_env.funcs with
+        | Some fn ->
+            let temp_name = String.concat "::" resolved_path in
+            let env_with_fn = { env with funcs = StringMap.add temp_name fn env.funcs } in
+            check_expr env_with_fn (ECall (temp_name, args)) expected_typ_opt
+        | None -> raise (TypeError ("Function not found in module: " ^ func_name))
+      )
   | EUnOp (Not, e) ->
       let t, env1 = check_expr env e (Some (TBase TBool)) in
       if t = TBase TBool then TBase TBool, env1
@@ -689,7 +714,7 @@ let rec eval_const (env_iota: Int64.t option) (e: Ast.expr) : Int64.t =
   | ECast (e, _) -> eval_const env_iota e
   | _ -> raise (TypeError "Expression is not a compile-time constant")
 
-let check_item env item =
+let rec check_item env item =
   match item with
   | IFn f -> check_fn_decl env f
   | IEnum e ->
@@ -748,14 +773,47 @@ let check_item env item =
         let mangled_m = { m with name = mangled_name } in
         check_fn_decl e mangled_m
       ) env_with_impl i.methods
+  | IMod m ->
+      let mod_path = Filename.concat env.project_root (m.name ^ ".wyz") in
+      if not (Sys.file_exists mod_path) then
+        raise (TypeError ("Module file not found: " ^ mod_path));
+      let inx = open_in mod_path in
+      let lexbuf = Lexing.from_channel inx in
+      lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
+      let prog = try Parser.program Lexer.read lexbuf with
+        | _ -> close_in inx; raise (TypeError ("Failed to parse module " ^ m.name))
+      in
+      close_in inx;
+      let mod_env = check_program_inner { empty_env with project_root = env.project_root } prog in
+      { env with modules = StringMap.add m.name mod_env env.modules }
 
-let check_program prog =
+and check_program_inner env prog =
   let env_with_imports = List.fold_left (fun e (imp : import_decl) ->
     let prefix = match imp.alias with
       | Some a -> a
       | None -> List.hd (List.rev imp.path)
     in
-    { e with imports = StringMap.add prefix imp.path e.imports }
-  ) empty_env prog.Ast.imports in
-  let env = List.fold_left check_item env_with_imports prog.items in
-  env
+    let e1 = { e with imports = StringMap.add prefix imp.path e.imports } in
+    match imp.path with
+    | "crate" :: rest ->
+        let mod_name = List.hd rest in
+        if StringMap.mem mod_name e1.modules then e1 else (
+          let mod_path = Filename.concat e1.project_root (mod_name ^ ".wyz") in
+          if Sys.file_exists mod_path then
+            let inx = open_in mod_path in
+            let lexbuf = Lexing.from_channel inx in
+            lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
+            let parsed_prog = try Parser.program Lexer.read lexbuf with
+              | _ -> close_in inx; raise (TypeError ("Failed to parse imported module " ^ mod_name))
+            in
+            close_in inx;
+            let mod_env = check_program_inner { empty_env with project_root = e1.project_root } parsed_prog in
+            { e1 with modules = StringMap.add mod_name mod_env e1.modules }
+          else e1
+        )
+    | _ -> e1
+  ) env prog.Ast.imports in
+  List.fold_left check_item env_with_imports prog.items
+
+let check_program project_root prog =
+  check_program_inner { empty_env with project_root = project_root } prog

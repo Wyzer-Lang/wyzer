@@ -22,9 +22,10 @@ let process_file filename =
   let prog = parse_with_error lexbuf in
   close_in inx;
   
+  let project_root = Filename.dirname filename in
   try
-    let _ = Typechecker.check_program prog in
-    let prog_comptime = Comptime.transform_program prog in
+    let _ = Typechecker.check_program project_root prog in
+    let prog_comptime = Comptime.transform_program project_root prog in
     let target_role_opt = ref None in
     let filename_idx = ref 1 in
     for i = 1 to Array.length Sys.argv - 1 do
@@ -39,7 +40,7 @@ let process_file filename =
     | None -> prog_comptime
     in
     let prog_transformed = Perceus.transform_program prog_to_run in
-    Eval.eval_program prog_transformed (Option.value !target_role_opt ~default:"Poly")
+    Eval.eval_program project_root prog_transformed (Option.value !target_role_opt ~default:"Poly")
   with
   | Typechecker.TypeError msg ->
       fprintf stderr "Type Error: %s\n" msg;

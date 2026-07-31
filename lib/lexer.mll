@@ -17,6 +17,7 @@ rule read = parse
   | "trait" { TRAIT }
   | "impl" { IMPL }
   | "pub" { PUB }
+  | "mod" { MOD }
   | "enum" { ENUM }
   | "import" { IMPORT }
   | "as" { AS }

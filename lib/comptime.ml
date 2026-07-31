@@ -73,6 +73,6 @@ let transform_item env i =
   | IGeneric (params, inner) -> IGeneric (params, inner) (* Ignoring generics for now, might need deep map *)
   | _ -> i
 
-let transform_program (p: program) : program =
-  let env = Eval.build_env p in
+let transform_program project_root (p: program) : program =
+  let env = Eval.build_env { Eval.empty_env with project_root = project_root } p in
   { p with items = List.map (transform_item env) p.items }
