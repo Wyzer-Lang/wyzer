@@ -229,8 +229,8 @@ let rec check_expr_impl env e expected_typ_opt =
       | None ->
           (match StringMap.find_opt name env.globals with
           | Some t ->
-              let var_role = match t with | TRole (_, r) -> r | _ -> "Main" in
-              if var_role <> "Global" && var_role <> env.current_role && env.current_role <> "Poly" then
+              let var_role = match t with | TRole (_, r) -> r | _ -> "Global" in
+              if var_role <> "Global" && var_role <> env.current_role then
                 raise (TypeError (Printf.sprintf "Cannot access global %s belonging to role %s from role %s" name var_role env.current_role));
               t, env
           | None -> raise (TypeError ("Undefined variable: " ^ name))))
@@ -674,8 +674,8 @@ and check_stmt env stmt =
               (match StringMap.find_opt name env.globals with
               | Some t_var ->
                   let t_e, env1 = check_expr env e (Some t_var) in
-                  let global_role = match t_var with | TRole (_, r) -> r | _ -> "Main" in
-                  if global_role <> env1.current_role && env1.current_role <> "Poly" then raise (TypeError ("Cannot access global " ^ name ^ " from role " ^ env1.current_role));
+                  let global_role = match t_var with | TRole (_, r) -> r | _ -> "Global" in
+                  if global_role <> "Global" && global_role <> env1.current_role then raise (TypeError ("Cannot access global " ^ name ^ " from role " ^ env1.current_role));
                   if not (types_compatible t_var t_e) then raise (TypeError "Assignment type mismatch");
                   env1
               | None -> raise (TypeError ("Undefined variable in assignment: " ^ name))))
