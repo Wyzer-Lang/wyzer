@@ -750,7 +750,14 @@ let check_fn_decl env (fn: Ast.fn_decl) =
   ) StringMap.empty fn.params in
   let local_env = { env with vars = initial_vars; ret_typ = fn.ret_typ; current_role = role_str } in
   (match fn.body with
-   | Some b -> let _ = check_block local_env b in ()
+   | Some b -> 
+       let env_final, _ = check_block local_env b in
+       StringMap.iter (fun name (t, _, state) ->
+         match t with
+         | TRole _ when state = Live -> 
+             raise (TypeError ("Function " ^ fn.name ^ " ends with unconsumed linear resource: " ^ name))
+         | _ -> ()
+       ) env_final.vars
    | None -> if not fn.is_extern then raise (TypeError ("Function " ^ fn.name ^ " must have a body")));
   { env with funcs = StringMap.add fn.name fn env.funcs }
 
