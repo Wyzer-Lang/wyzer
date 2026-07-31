@@ -163,6 +163,17 @@ When a value is `transfer`red across a role boundary, the typechecker marks the 
 
 Because Perceus enforces these strict linear aliasing rules locally, the choreographic engine can safely trust that a message dispatched over a physical TCP socket has a singular, exclusive owner upon deserialization, seamlessly uniting the local heap with the distributed topology.
 
+### 4.5 Addressing the Critique: "Why are roles on types?"
+
+A common reaction to Wyzer's syntax is: *"It seems weird that role annotations are on types (e.g., `u32@Client`) rather than on variables (`let x @ Client = 10`) or blocks (`on Client { ... }`)."*
+
+This was a highly deliberate design decision rooted in **Type Composability** and **Data Structures**:
+1. **Granular Distribution**: Attaching roles to types allows us to express data structures that physically span multiple nodes. For example, a `Result<u32@Server, str@Client>` means the `Ok` payload lives on the Server, but the `Err` payload lives on the Client. A block-based `on Client { ... }` cannot easily return a structurally distributed enum.
+2. **First-Class Contracts**: In a functional paradigm where functions are values, a function's signature must fully describe its choreographic contract. A type signature like `fn(u32@Sensor) -> u32@Server` tells the compiler (and the developer) exactly what network operations will be synthesized upon invocation.
+3. **Memory Model Unification**: In Wyzer, moving data across the network (`transfer`) is semantically identical to moving data out of a local variable (linear consumption). By making the physical location a property of the *type*, the Perceus memory model treats a cross-network transfer with the exact same mathematical rigor as a local heap allocation, forbidding distributed double-frees automatically.
+
+While it may initially look strange to imperative programmers, treating physical location as a spatial type modifier (`T@Role`) is the mathematical linchpin that allows the compiler to unify memory safety and distributed safety.
+
 ### Honest scope note
 Building an entire OS this way is a long-term goal. For now, we want to prove this works for regular programs (threads talking safely). This is useful on its own. Later, we can try it on kernels, high level softwares and hardware (CPUs, GPUs, FPGAs...).
 
