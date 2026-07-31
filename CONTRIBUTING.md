@@ -69,4 +69,11 @@ Please make sure all tests pass before submitting a pull request, and consider a
 
 By participating in this project, you agree to abide by our Code of Conduct. Please be respectful and considerate of others when communicating on issues or pull requests.
 
+### AI Usage
+Bringing technology to use is not an issue , it becomes an issue with how you use technology so here are the rules for using AI in this project
+- Refrain from using AI for coding wyzer as it can cause the language to be buggy as seen in Linux kernel
+- If AI was used in contributing please mention where and how AI was used when you open the PR
+- AI can be used for understanding what's going on in the project
+- Decisions taken by AI should be discussed in issues or our discord server https://discord.gg/RhpPhkTrVu
+
 Happy hacking!
