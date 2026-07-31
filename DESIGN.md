@@ -195,16 +195,3 @@ If you want to contribute to the *theory*, not just implementation, this is roug
 **Tier 4: Systems knowledge (for OS development)**
 - *Operating Systems: Three Easy Pieces* (free online): Covers interrupts.
 - seL4's approach to resource access and verification: The closest project to what Wyzer wants to do at the OS level.
-
----
-
-## 11. How to Contribute Right Now
-
-Since we haven't written the code yet, the best ways to help are:
-
-- Work on the open research questions in Section 7, or the risks in Section 8.
-- Test the rules with real-world examples to find problems.
-- Read the Tier 1-3 materials and tell us if our explanations are wrong.
-- Draw up ideas for role-type syntax and ask for feedback.
-
-We will update this document as we make decisions. If you see a mistake, please let us know.
