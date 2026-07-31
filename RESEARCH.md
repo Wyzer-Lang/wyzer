@@ -94,14 +94,16 @@ Interrupt handlers stop the program at random times. They don't follow a strict 
 
 **Unsolved problem:** What if an interrupt handler needs to stop the script completely and restart it later? We are still researching this. See Section 7.
 
-### Metaprogramming as Choreography (The Compiler as a Node)
+### 4.1 Metaprogramming as Choreography (The Compiler as a Node)
 
-Traditional languages introduce entirely separate sub-languages or disjoint evaluation phases to handle metaprogramming (e.g., C preprocessor macros, Rust `macro_rules!`, or Zig's `comptime`). This creates a semantic bifurcation: the language executed by the compiler at build-time is fundamentally distinct from the language executed by the runtime.
+Traditional systems programming languages introduce entirely separate sub-languages or disjoint evaluation phases to handle metaprogramming (e.g., C preprocessor macros, Rust's `macro_rules!`, or Zig's `comptime`). This creates a semantic bifurcation: the language executed by the compiler at build-time is fundamentally distinct from the language executed by the runtime, often lacking the full type-safety and syntax of the host language.
 
-Wyzer unifies these concepts by treating **the Compiler itself as just another node in the choreography**. By formalizing the Compiler as an implicit, omnipresent role (e.g., `@Compiler`), metaprogramming simply becomes a standard choreographic `transfer` operation targeted at the compile-time node.
+Wyzer unifies these concepts by proposing a radical topological shift: **the Compiler itself is treated as just another node in the choreography**. 
 
-**Theoretical Formulation**: Let $C$ be the set of nodes in a choreography. We define $C = \{N_1, N_2, \dots, N_k\} \cup \{N_{compiler}\}$.
-When an expression evaluates to a value of type $T @ N_{compiler}$, the Endpoint Projection (EPP) engine must route the evaluation of that expression to the compiler's internal evaluator during the compilation phase, rather than projecting it into the emitted binaries.
+By formalizing the Compiler as an implicit, omnipresent role (e.g., `@Compiler`), metaprogramming simply becomes a standard choreographic `transfer` operation targeted at the compile-time node.
+
+**Theoretical Formulation**: Let $C$ be the set of physical nodes in a choreography (e.g., $C = \{\text{Client}, \text{Server}\}$). We expand this set to define a unified topology $C' = C \cup \{N_{compiler}\}$.
+When an expression evaluates to a value of type $T @ N_{compiler}$, the Endpoint Projection (EPP) engine recognizes it as a cross-boundary communication. Instead of emitting a physical network operation, the compiler routes the evaluation of that expression to its own internal AST evaluator during the compilation phase, injecting the result directly into the projected binaries of the receiving node.
 
 For example, string interpolation and static code generation can be expressed dynamically:
 ```wyzer
@@ -109,27 +111,29 @@ For example, string interpolation and static code generation can be expressed dy
 // By transferring the expression to the Compiler, it is evaluated instantly during the build.
 let interpolated: str@Client = transfer(f"Build Date: {get_date()}", Compiler);
 ```
-In this model:
+This paradigm yields three profound implications:
 1. **Zero New Syntax**: Metaprogramming does not require distinct keyword modifiers (like `const fn` or `comptime`).
-2. **Phase Separation via Topology**: The staging of computation (build-time vs. run-time) is elegantly subsumed by spatial topology. The temporal boundary of compilation is just a spatial boundary to the `@Compiler` role.
-3. **Trace Equivalence**: The typechecker ensures that the Compiler role satisfies trace equivalence identically to physical nodes, preventing malformed macro expansions.
+2. **Phase Separation via Topology**: The staging of computation (build-time vs. run-time) is elegantly subsumed by spatial topology. The temporal boundary of compilation is reframed as a spatial boundary to the `@Compiler` role.
+3. **Trace Equivalence**: The typechecker ensures that the Compiler role satisfies choreographic trace equivalence identically to physical nodes, preventing malformed macro expansions.
 
-This establishes a novel isomorphism between **multi-staged programming** and **choreographic programming**, reducing the overall conceptual surface area of the language.
+This establishes a novel isomorphism between **multi-staged programming** and **choreographic programming**, heavily reducing the overall conceptual surface area of the language.
 
-### Knowledge of Choice via AST Synthesis
+### 4.2 Knowledge of Choice via AST Synthesis
 
-In classical distributed systems, **Knowledge of Choice** is a major source of deadlocks: if Node A evaluates a condition that dictates the control flow of Node B, Node A must explicitly send the result of that condition to Node B, and Node B must block to receive it before branching. 
-Most choreographic languages (like Jolie or Chor) handle this by either forcing the programmer to write explicit network transfers for the condition, or by strictly enforcing *Choreographic Trace Equivalence* at compile-time (rejecting the program if the footprint of operations doesn't match perfectly).
+In classical distributed systems, **Knowledge of Choice** is a major source of deadlocks: if Node A evaluates a boolean condition that dictates the control flow of Node B, Node A must explicitly send the result of that condition to Node B, and Node B must block to receive it before branching. 
 
-Wyzer takes a radically different approach: **Automatic Branch Synchronization via AST Synthesis**. 
+Most choreographic languages (like Jolie or Chor) handle this limitation passively. They strictly enforce *Choreographic Trace Equivalence* at compile-time, acting as a verification tool that rejects the program with an "Asymmetric Choreography" error if the footprint of operations doesn't match perfectly, forcing the developer to manually write the required synchronization protocols.
 
-**Theoretical Formulation**: Given an expression $E = \text{if } C \text{ then } B_1 \text{ else } B_2$, where $\text{role}(C) = N_{evaluator}$, and the set of roles participating in $B_1 \cup B_2$ is $R_{participants}$.
+Wyzer elevates choreography from a passive verification tool to an **active compilation mechanism** via **Automatic Branch Synchronization (AST Synthesis)**.
+
+**Theoretical Formulation**: Given a branching expression $E = \text{if } C \text{ then } B_1 \text{ else } B_2$, where the condition $C$ is evaluated strictly on role $N_{evaluator}$ (i.e., $\text{role}(C) = N_{evaluator}$). Let $R_{participants}$ be the set of all roles that contain operations within the blocks $B_1 \cup B_2$.
+
 During Endpoint Projection (EPP), for any target role $N_{target} \in R_{participants} \setminus \{N_{evaluator}\}$:
-1. The projection engine automatically erases the evaluation of $C$ for $N_{target}$.
-2. It synthesizes a blocking network receive operation: $C_{projected} \leftarrow \text{ENetRecv}(N_{evaluator})$.
-3. For $N_{evaluator}$, it synthesizes $O(|R_{participants}| - 1)$ network send operations, injecting $\text{ENetSend}(N_{target}, C)$ identically into the preambles of both projected blocks $B_1$ and $B_2$.
+1. The projection engine automatically erases the evaluation of condition $C$ for $N_{target}$.
+2. It synthesizes a blocking network receive operation, yielding $C_{projected} \leftarrow \text{ENetRecv}(N_{evaluator})$.
+3. Simultaneously, for the evaluating node $N_{evaluator}$, the engine synthesizes $O(|R_{participants}| - 1)$ network send operations, injecting $\text{ENetSend}(N_{target}, C)$ identically into the preambles of both projected blocks $B_1$ and $B_2$.
 
-This allows the programmer to write a single, centralized control flow graph:
+This allows developers to write a single, centralized control flow graph without explicitly reasoning about synchronization barriers:
 ```wyzer
 // The condition is evaluated purely on the Client.
 if (x: u32@Client) > 5 {
@@ -137,7 +141,25 @@ if (x: u32@Client) > 5 {
     std::io::println("Greater!" @ Server); 
 }
 ```
-The Wyzer compiler guarantees absolute trace equivalence by automatically constructing the required synchronization protocol at the AST level. This elevates choreography from a *verification* tool into an *active compilation* mechanism, entirely removing the class of "Asymmetric Choreography" errors from the developer experience.
+The compiler guarantees absolute trace equivalence by automatically constructing the required synchronization protocol directly into the AST, entirely removing deadlocks from the developer experience.
+
+### 4.3 Zero-Cost Role Polymorphism
+
+To maximize code reusability across a distributed topology, Wyzer introduces **Role Inference**.
+Functions and variables that omit an explicit role annotation (e.g., `@Role`) are strictly inferred by the typechecker to belong to the `"Poly"` (Polymorphic) role.
+
+When a `"Poly"` function is invoked by a specific physical node, the projection engine performs zero-cost monomorphization. The execution of the function is seamlessly projected onto the calling node's local memory, and its return value is implicitly cast to the caller's role without requiring a `transfer` boundary or incurring any network serialization overhead. 
+
+This guarantees that standard library utilities (like math operations or data structure manipulations) remain completely topology-agnostic, while the compiler strictly forbids `"Poly"` functions from accessing node-specific global state.
+
+### 4.4 Distributed Linear Types (Perceus Integration)
+
+Wyzer's most critical innovation is the unification of local memory safety and distributed network safety under a single ownership paradigm.
+
+By running the Choreographic Typechecker concurrently with the **Perceus Reference Counting & FBIP (Fully In-Place Update)** memory model, the `transfer` operation acts as an absolute linear move. 
+When a value is `transfer`red across a role boundary, the typechecker marks the local reference as linearly `Consumed`. This structurally forbids double-frees and use-after-transfers across the network. If the `Client` attempts to access a variable that has already been dispatched over the network to the `Server`, the compiler halts with a predictable linear type error.
+
+Because Perceus enforces these strict linear aliasing rules locally, the choreographic engine can safely trust that a message dispatched over a physical TCP socket has a singular, exclusive owner upon deserialization, seamlessly uniting the local heap with the distributed topology.
 
 ### Honest scope note
 Building an entire OS this way is a long-term goal. For now, we want to prove this works for regular programs (threads talking safely). This is useful on its own. Later, we can try it on kernels, high level softwares and hardware (CPUs, GPUs, FPGAs...).
