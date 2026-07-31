@@ -6,7 +6,7 @@
 - **[DRAFT]**: We have a working rule but need to test it more.
 - **[OPEN]**: We still need to solve this problem.
 
-We mark these clearly so everyone knows what is finished and what is not.
+We mark these clearly so everyone knows what is finished and what is not. You may also use these markers to quickly search through the document for what's open.
 
 ---
 
@@ -514,23 +514,6 @@ str_lit     ::= '"' char* '"'
 ```
 
 Typing uses standard rules. An integer has the type of its suffix, a boolean is `bool`, and a string is `str`. We do not infer sizes. An integer without a suffix is a compile error. This matches our "no hidden magic" rule.
-
----
-
-## 18. Summary of Open Tasks
-
-1. **Section 7.3**: Rules for stopping and restarting interrupts.
-2. **Section 6.3**: Splitting the global plan for each role automatically.
-3. **Section 12.2**: Rules for using resources inside loops.
-4. **Section 15**: Writing the rules for green threads.
-5. **Section 13.2**: How `mut` works with the memory model.
-6. **Section 16.3**: How structs handle mixed linear and normal fields.
-7. **Section 11.1**: How early `return` handles resources.
-8. **Section 14.2**: Security rules for I/O like printing.
-9. **Section 5.4**: Knowing when the compiler can prove uniqueness.
-10. **Section 10.3**: Checking if role types can cross module boundaries.
-11. **Section 6.4**: Making contracts for External roles and treating them safely.
-12. **Section 3.3**: Writing down the basic type rules.
 
 ---
 
