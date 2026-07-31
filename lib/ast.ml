@@ -67,6 +67,7 @@ type expr =
   | ENetRecv of string
   | ESizeOf of typ
   | ETypeOf of expr
+  | EComptime of expr
 [@@deriving show, eq]
 
 and stmt =

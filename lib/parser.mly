@@ -181,6 +181,7 @@ expr_base(X):
   | TRANSFER LPAREN e=expr COMMA r=IDENT RPAREN { ETransfer (e, r) }
   | SIZEOF LT t=typ GT LPAREN RPAREN { ESizeOf t }
   | TYPEOF LPAREN e=expr RPAREN { ETypeOf e }
+  | e=X AT r=IDENT { if r = "Comptime" then EComptime e else ETransfer (e, r) }
   | e1=X LBRACKET e2=expr RBRACKET %prec LBRACKET { EIndex (e1, e2) }
   | GENERIC LT args=separated_nonempty_list(COMMA, typ) GT e=X { EGenericApp (args, e) }
   | l=literal { ELit l }

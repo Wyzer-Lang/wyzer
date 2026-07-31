@@ -15,7 +15,7 @@ let rec roles_in_expr e =
       | ELit _ | EVar _ | EPathVar _ | ENetRecv _ -> StringSet.empty
       | ECall (_, args) | EPathCall (_, args) | EMethodCall (_, _, args, _) ->
           List.fold_left (fun acc arg -> StringSet.union acc (roles_in_expr arg)) StringSet.empty args
-      | EUnOp (_, e) | EDup (_, e) | ECast (e, _) | EField (e, _) | EGenericApp (_, e) | ETyped (e, _) | ENetSend (_, e) | ETypeOf e -> roles_in_expr e
+      | EUnOp (_, e) | EDup (_, e) | ECast (e, _) | EField (e, _) | EGenericApp (_, e) | ETyped (e, _) | ENetSend (_, e) | ETypeOf e | EComptime e -> roles_in_expr e
       | ESizeOf _ -> StringSet.empty
       | EBinOp (e1, _, e2) | EIndex (e1, e2) -> StringSet.union (roles_in_expr e1) (roles_in_expr e2)
       | EStruct (_, fields, _) ->
@@ -80,7 +80,7 @@ let rec project_expr e target_role =
           | Some p_inner -> Some (ENetSend (r, p_inner))
           | None -> None)
       | ENetRecv r -> Some (ENetRecv r)
-      | ESizeOf _ | ETypeOf _ -> failwith "sizeof/typeof should have been evaluated at compile-time"
+      | ESizeOf _ | ETypeOf _ | EComptime _ -> failwith "sizeof/typeof/comptime should have been evaluated at compile-time"
       | EIf (cond, thn, els) ->
           let cond_role = match get_role cond with | Some r -> r | None -> "Poly" in
           if cond_role <> target_role && cond_role <> "Poly" then

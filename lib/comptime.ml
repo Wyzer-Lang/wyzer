@@ -15,7 +15,7 @@ let rec val_to_expr (v: value) : expr =
 
 let rec transform_expr env e =
   match e with
-  | ETransfer (inner, "Compiler") ->
+  | EComptime inner ->
       (* EVALUATE AT COMPILE TIME! *)
       let transformed = transform_expr env inner in
       let v = Eval.eval_expr env transformed in

@@ -75,7 +75,7 @@ let rec generate_expr (e: expr) : string =
       sprintf "wyzer_ipc_send(\"%s\", %s)" target (generate_expr e)
   | ENetRecv src ->
       sprintf "wyzer_ipc_recv(\"%s\")" src
-  | ESizeOf _ | ETypeOf _ -> failwith "sizeof/typeof should have been evaluated at compile-time"
+  | ESizeOf _ | ETypeOf _ | EComptime _ -> failwith "sizeof/typeof/comptime should have been evaluated at compile-time"
   | _ -> "/* unimplemented expr */"
 
 and generate_stmt (s: stmt) : string =

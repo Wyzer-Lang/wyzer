@@ -1,16 +1,13 @@
 role @Client;
 
 fn main() {
-    let size_u32 = sizeof<u32>();
-    let size_u64 = sizeof<u64>();
-    
     // Cannot print integers yet because std::io::print is hardcoded to %s in codegen for V1
-    // std::io::print(size_u32);
-    // std::io::print(size_u64);
+    // let size_u32 = sizeof<u32>() @Comptime;
+    // let size_u64 = sizeof<u64>() @Comptime;
     
     let my_var = 42;
-    // typeof is evaluated at compile time by the @Compiler
-    let type_name = transfer(typeof(my_var), Compiler);
+    // typeof is evaluated at compile time by the @Comptime context
+    let type_name = typeof(my_var) @Comptime;
     
     std::io::println("Type of my_var:");
     std::io::println(type_name);

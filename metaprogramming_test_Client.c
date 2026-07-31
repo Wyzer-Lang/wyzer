@@ -38,15 +38,11 @@ uint32_t wyzer_ipc_recv(const char* src) {
 
 
 void wyzer_main() {
-  auto size_u32 = 4;
-  auto size_u64 = 8;
   auto my_var = 42;
   auto type_name = "i32@Poly";
   printf("%s\n", "Type of my_var:");
   printf("%s\n", type_name);
   /* drop type_name */;
-  /* drop size_u64 */;
-  /* drop size_u32 */;
   /* drop my_var */;
 }
 

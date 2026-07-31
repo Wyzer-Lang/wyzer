@@ -1,3 +1,1 @@
-fn main() {
-    std::io::print("hello world")
-}
+fn main() { let x = 5; }
