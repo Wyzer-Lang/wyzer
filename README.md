@@ -162,3 +162,11 @@ Honestly, this is early research. Several big problems are still unsolved.
 
 **"What's the elevator pitch, one more time?"**
 One ownership rule for memory, threads, and networks. No garbage collector, no complex borrow checker, and no network errors.
+
+## AI Assistance
+
+Assistance provided by AI
+
+- AI was used to generate commit messages
+- AI was used for research (understanding choreographic programming, perceus memory model, etc closely)
+- AI was used for brand designing, i thank AI for providing me a wonderful number of ideas to help me design Wyzer's Logo :)
