@@ -65,6 +65,8 @@ type expr =
   | ETyped of expr * typ
   | ENetSend of string * expr
   | ENetRecv of string
+  | ESizeOf of typ
+  | ETypeOf of expr
 [@@deriving show, eq]
 
 and stmt =

@@ -17,7 +17,8 @@ let rec transform_expr env e =
   match e with
   | ETransfer (inner, "Compiler") ->
       (* EVALUATE AT COMPILE TIME! *)
-      let v = Eval.eval_expr env inner in
+      let transformed = transform_expr env inner in
+      let v = Eval.eval_expr env transformed in
       val_to_expr v
   | ETransfer (inner, role) -> ETransfer (transform_expr env inner, role)
   | ECall (name, args) -> ECall (name, List.map (transform_expr env) args)
@@ -48,6 +49,35 @@ let rec transform_expr env e =
   | ETyped (inner, t) -> ETyped (transform_expr env inner, t)
   | ENetSend (r, inner) -> ENetSend (r, transform_expr env inner)
   | ENetRecv r -> ENetRecv r
+  | ESizeOf t ->
+      let rec sizeof_type t =
+        match t with
+        | TBase TU8 | TBase TI8 | TBase TBool -> 1
+        | TBase TU16 | TBase TI16 -> 2
+        | TBase TU32 | TBase TI32 -> 4
+        | TBase TU64 | TBase TI64 -> 8
+        | TBase TUSize | TBase TISize | TBase TStr -> 8 (* assuming 64-bit *)
+        | TBase TUnit -> 0
+        | TBase (TCustom _) -> 8 (* pointers to structs for V1 *)
+        | TRole (inner, _) -> sizeof_type inner
+        | TArray _ -> 8
+        | _ -> 8
+      in
+      ELit (LInt (Int64.of_int (sizeof_type t), Some TU32))
+  | ETypeOf inner ->
+      let t = try Typechecker.ExprMap.find Typechecker.typed_ast_map inner
+              with Not_found -> TBase TUnit in
+      let rec string_of_typ t =
+        match t with
+        | TBase TU32 -> "u32"
+        | TBase TI32 -> "i32"
+        | TBase TStr -> "str"
+        | TBase TBool -> "bool"
+        | TBase (TCustom name) -> "Struct_" ^ name
+        | TRole (inner, r) -> string_of_typ inner ^ "@" ^ r
+        | _ -> "unknown"
+      in
+      ELit (LStr (string_of_typ t))
   | ELit _ | EVar _ | EPathVar _ -> e
 
 and transform_stmt env s =

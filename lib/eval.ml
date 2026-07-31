@@ -412,6 +412,7 @@ let rec eval_expr env e =
       in
       wait ()
   | EMethodCall _ -> raise (EvalError "EMethodCall not desugared")
+  | ESizeOf _ | ETypeOf _ -> raise (EvalError "sizeof/typeof should have been evaluated at compile-time")
 
 and eval_stmt env stmt =
   match stmt with

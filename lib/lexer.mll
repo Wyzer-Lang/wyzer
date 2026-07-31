@@ -41,6 +41,8 @@ rule read = parse
   | "Ok" { OK }
   | "Err" { ERR }
   | "iota" { IOTA }
+  | "sizeof" { SIZEOF }
+  | "typeof" { TYPEOF }
   | "_" { UNDERSCORE }
   | "u8" { U8 } | "u16" { U16 } | "u32" { U32 } | "u64" { U64 }
   | "usize" { USIZE }

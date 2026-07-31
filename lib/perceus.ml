@@ -39,6 +39,7 @@ let rec free_vars_expr (e: expr) : StringSet.t =
   | ENetSend (_, e) -> free_vars_expr e
   | ENetRecv _ -> StringSet.empty
   | EMethodCall _ -> failwith "EMethodCall should have been desugared by Comptime"
+  | ESizeOf _ | ETypeOf _ -> failwith "sizeof/typeof should have been evaluated at compile-time"
 
 and bound_vars_pat (p: pattern) : StringSet.t =
   match p with

@@ -629,6 +629,11 @@ let rec check_expr_impl env e expected_typ_opt =
   | ENetRecv _ ->
       (* EPP handles types dynamically, just return Unit here to satisfy exhaustiveness *)
       (TBase TUnit, env)
+  | ESizeOf _t ->
+      (TBase TU32, env)
+  | ETypeOf inner ->
+      let _, env' = check_expr env inner None in
+      (TBase TStr, env')
 
 and check_expr env e expected_typ_opt =
   let (t, env') = check_expr_impl env e expected_typ_opt in
