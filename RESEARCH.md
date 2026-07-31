@@ -136,9 +136,11 @@ During Endpoint Projection (EPP), for any target role $N_{target} \in R_{partici
 This allows developers to write a single, centralized control flow graph without explicitly reasoning about synchronization barriers:
 ```wyzer
 // The condition is evaluated purely on the Client.
-if (x: u32@Client) > 5 {
+let x: u32@Client = 10;
+if x > 5 {
     // The Server executes this branch without explicit network code!
-    std::io::println("Greater!" @ Server); 
+    let msg: str@Server = "Greater!";
+    std::io::println(msg); 
 }
 ```
 The compiler guarantees absolute trace equivalence by automatically constructing the required synchronization protocol directly into the AST, entirely removing deadlocks from the developer experience.
