@@ -1,0 +1,11 @@
+fn check_result(r: Result<u32, str>) -> u32 {
+    match r {
+        Ok(v) => v
+    }
+}
+
+fn main() {
+    let r: Result<u32, str> = Ok(42u32);
+    let res: u32 = check_result(r);
+    std::io::println(res);
+}
