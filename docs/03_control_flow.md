@@ -32,6 +32,21 @@ fn main() {
 ```
 *Note: A `match` block is an expression. If you use it on its own line, you must put a semicolon `;` at the end.*
 
+### Exhaustiveness Checking
+
+Wyzer's compiler performs strict **Exhaustiveness Checking** on all `match` statements. This means the compiler mathematically verifies that you have handled every possible value (like every variant in an `enum`, or `true` and `false` for `bool`). If you miss one, your code will not compile!
+
+If you don't want to handle every single choice individually, you can use the wildcard pattern (`_`) as a "catch-all" fallback for any remaining variants:
+
+```wyzer
+fn process(status: Status) {
+    match status {
+        Status::Active => std::io::println("Active!"),
+        _ => std::io::println("Inactive or Pending!")
+    };
+}
+```
+
 ## Loops
 Wyzer has basic loops to repeat code.
 
