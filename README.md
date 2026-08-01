@@ -21,6 +21,8 @@ To solve this problem Wyzer introduces the concept of **choreographic programmin
 
 Contributions are welcome, if you want to contribute to the language please read [RESEARCH.md](https://github.com/wyzer-Lang/wyzer/blob/main/RESEARCH.md)
 
+Join our discord server as well :)) https://discord.gg/RhpPhkTrVu
+
 ---
 
 ## Documentation
