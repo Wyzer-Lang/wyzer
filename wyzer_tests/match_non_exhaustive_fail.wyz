@@ -1,18 +1,11 @@
-pub enum Priority {
-    Low,
-    Medium,
-    High
-}
-
-fn check_priority(p: Priority) -> u32 {
-    match p {
-        Priority::Low => 1,
-        Priority::Medium => 2
+fn check_result(r: Result<u32, str>) -> u32 {
+    match r {
+        Ok(v) => v
     }
 }
 
 fn main() {
-    let p: Priority = Priority::High;
-    let res: u32 = check_priority(p);
+    let r: Result<u32, str> = Ok(42u32);
+    let res: u32 = check_result(r);
     std::io::println(res);
 }

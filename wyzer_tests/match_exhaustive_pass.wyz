@@ -1,19 +1,12 @@
-pub enum Status {
-    Active,
-    Inactive,
-    Pending
-}
-
-fn process(s: Status) -> u32 {
-    match s {
-        Status::Active => 1,
-        Status::Inactive => 2,
-        Status::Pending => 3
+fn process(r: Result<u32, str>) -> u32 {
+    match r {
+        Ok(v) => v,
+        Err(e) => 0u32
     }
 }
 
 fn main() {
-    let s: Status = Status::Active;
-    let res: u32 = process(s);
+    let r: Result<u32, str> = Ok(42u32);
+    let res: u32 = process(r);
     std::io::println(res);
 }

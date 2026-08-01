@@ -157,7 +157,7 @@ let check_match_exhaustiveness env typ arms =
             List.fold_left (fun acc (m : Ast.enum_member) -> StringSet.add m.name acc) StringSet.empty enum_decl.members
           in
           let remaining = List.fold_left (fun set (pat, _) ->
-            let rec process_pat set p =
+            let process_pat set p =
               match p with
               | PWildcard | PIdent _ -> StringSet.empty
               | PVariant (v, _) -> StringSet.remove v set
@@ -171,7 +171,7 @@ let check_match_exhaustiveness env typ arms =
   | TResult _ ->
       let initial_set = StringSet.of_list ["Ok"; "Err"] in
       let remaining = List.fold_left (fun set (pat, _) ->
-        let rec process_pat set p =
+        let process_pat set p =
           match p with
           | PWildcard | PIdent _ -> StringSet.empty
           | PVariant (v, _) -> StringSet.remove v set
@@ -184,7 +184,7 @@ let check_match_exhaustiveness env typ arms =
   | TBase TBool ->
       let initial_set = StringSet.of_list ["true"; "false"] in
       let remaining = List.fold_left (fun set (pat, _) ->
-        let rec process_pat set p =
+        let process_pat set p =
           match p with
           | PWildcard | PIdent _ -> StringSet.empty
           | PLit (LBool b) -> StringSet.remove (string_of_bool b) set
