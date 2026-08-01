@@ -240,10 +240,24 @@ let rec check_expr_impl env e expected_typ_opt =
         | Some mod_path -> mod_path @ List.tl path
         | None -> path
       in
-      if resolved_path = ["std"; "io"; "stdin"] || resolved_path = ["std"; "io"; "stdout"] || resolved_path = ["std"; "io"; "stderr"] then
-        TBase (TCustom "Stream"), env
-      else
-        raise (TypeError ("Unknown path variable: " ^ String.concat "::" path))
+      (match resolved_path with
+      | [enum_name; variant_name] ->
+          (match StringMap.find_opt enum_name env.enums with
+          | Some enum_decl ->
+              if List.exists (fun (m : Ast.enum_member) -> m.name = variant_name) enum_decl.members then
+                TBase (TCustom enum_name), env
+              else
+                raise (TypeError ("Enum " ^ enum_name ^ " does not have variant " ^ variant_name))
+          | None ->
+              if resolved_path = ["std"; "io"; "stdin"] || resolved_path = ["std"; "io"; "stdout"] || resolved_path = ["std"; "io"; "stderr"] then
+                TBase (TCustom "Stream"), env
+              else
+                raise (TypeError ("Unknown path variable: " ^ String.concat "::" path)))
+      | _ ->
+          if resolved_path = ["std"; "io"; "stdin"] || resolved_path = ["std"; "io"; "stdout"] || resolved_path = ["std"; "io"; "stderr"] then
+            TBase (TCustom "Stream"), env
+          else
+            raise (TypeError ("Unknown path variable: " ^ String.concat "::" path)))
   | ECall (name, args) ->
       let targs_opt = env.active_targs in
       let env_clean = { env with active_targs = None } in

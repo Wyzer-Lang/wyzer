@@ -317,6 +317,7 @@ let rec eval_expr env e =
             let matches, env_ext = match pat, v with
               | PWildcard, _ -> true, env
               | PIdent id, _ -> true, { env with vars = StringMap.add id (ref v) env.vars }
+              | PVariant (name, None), VStr s -> (name = s), env
               | PVariant (name, None), VPtr ptr -> 
                   (match (IntMap.find ptr !heap).data with
                   | HOk _ when name = "Ok" -> true, env
@@ -372,10 +373,20 @@ let rec eval_expr env e =
         | Some mod_path -> mod_path @ List.tl path
         | None -> path
       in
-      if resolved_path = ["std"; "io"; "stdin"] then VStr "stdin"
-      else if resolved_path = ["std"; "io"; "stdout"] then VStr "stdout"
-      else if resolved_path = ["std"; "io"; "stderr"] then VStr "stderr"
-      else raise (EvalError "Unknown path variable")
+      (match resolved_path with
+      | [enum_name; variant_name] ->
+          (match StringMap.find_opt enum_name env.enums with
+          | Some _ -> VStr variant_name
+          | None ->
+              if resolved_path = ["std"; "io"; "stdin"] then VStr "stdin"
+              else if resolved_path = ["std"; "io"; "stdout"] then VStr "stdout"
+              else if resolved_path = ["std"; "io"; "stderr"] then VStr "stderr"
+              else raise (EvalError "Unknown path variable"))
+      | _ ->
+          if resolved_path = ["std"; "io"; "stdin"] then VStr "stdin"
+          else if resolved_path = ["std"; "io"; "stdout"] then VStr "stdout"
+          else if resolved_path = ["std"; "io"; "stderr"] then VStr "stderr"
+          else raise (EvalError "Unknown path variable"))
   | EFormatStr (s_ref, parsed_ref) ->
       let evaled_rest = List.map (fun (e_inner, lit) -> (eval_expr env e_inner, lit)) !parsed_ref in
       VFormatStr (!s_ref, evaled_rest)
