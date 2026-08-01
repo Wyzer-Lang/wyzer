@@ -94,27 +94,23 @@ Interrupt handlers stop the program at random times. They don't follow a strict 
 
 **Unsolved problem:** What if an interrupt handler needs to stop the script completely and restart it later? We are still researching this. See Section 7.
 
-### 4.1 Metaprogramming as Choreography (The Compiler as a Node)
+#### 4.1 Metaprogramming as Choreography (The `@Comptime` Attribute)
 
 Traditional systems programming languages introduce entirely separate sub-languages or disjoint evaluation phases to handle metaprogramming (e.g., C preprocessor macros, Rust's `macro_rules!`, or Zig's `comptime`). This creates a semantic bifurcation: the language executed by the compiler at build-time is fundamentally distinct from the language executed by the runtime, often lacking the full type-safety and syntax of the host language.
 
-Wyzer unifies these concepts by proposing a radical topological shift: **the Compiler itself is treated as just another node in the choreography**. 
+Initially, Wyzer attempted to solve this by treating the Compiler as just another node in the choreography (`transfer(..., Compiler)`). However, feedback indicated that metaprogramming semantics should be distinct from physical node transfers to prevent conceptual blurring between build-time and run-time architectures.
 
-By formalizing the Compiler as an implicit, omnipresent role (e.g., `@Compiler`), metaprogramming simply becomes a standard choreographic `transfer` operation targeted at the compile-time node.
+Wyzer addresses this by introducing explicit **`@Comptime` evaluation**. By suffixing any expression with `@Comptime`, the AST evaluation engine intercepts the expression during the compilation phase, safely evaluates it using the native language semantics, and embeds the resulting constant directly into the AST before Endpoint Projection begins.
 
-**Theoretical Formulation**: Let $C$ be the set of physical nodes in a choreography (e.g., $C = \{\text{Client}, \text{Server}\}$). We expand this set to define a unified topology $C' = C \cup \{N_{compiler}\}$.
-When an expression evaluates to a value of type $T @ N_{compiler}$, the Endpoint Projection (EPP) engine recognizes it as a cross-boundary communication. Instead of emitting a physical network operation, the compiler routes the evaluation of that expression to its own internal AST evaluator during the compilation phase, injecting the result directly into the projected binaries of the receiving node.
-
-For example, string interpolation and static code generation can be expressed dynamically:
 ```wyzer
-// The format string requires information known only at compile time.
-// By transferring the expression to the Compiler, it is evaluated instantly during the build.
-let interpolated: str@Client = transfer(f"Build Date: {get_date()}", Compiler);
+// By using @Comptime, the expression is evaluated instantly during the build.
+let interpolated: str@Client = f"Build Date: {get_date()}" @Comptime;
 ```
-This paradigm yields three profound implications:
-1. **Zero New Syntax**: Metaprogramming does not require distinct keyword modifiers (like `const fn` or `comptime`).
-2. **Phase Separation via Topology**: The staging of computation (build-time vs. run-time) is elegantly subsumed by spatial topology. The temporal boundary of compilation is reframed as a spatial boundary to the `@Compiler` role.
-3. **Trace Equivalence**: The typechecker ensures that the Compiler role satisfies choreographic trace equivalence identically to physical nodes, preventing malformed macro expansions.
+
+**Consequences of this Design**:
+1. **Unification of Syntax**: There is no separate "macro language." The exact same Wyzer code that runs on the Client or Server can be executed by the compiler.
+2. **Phase Separation**: The staging of computation (build-time vs. run-time) is elegantly made explicit by the `@Comptime` tag, creating a clear architectural boundary.
+3. **Safety**: The typechecker ensures that `@Comptime` expressions only depend on data available during compilation, preventing malformed macro expansions.
 
 This establishes a novel isomorphism between **multi-staged programming** and **choreographic programming**, heavily reducing the overall conceptual surface area of the language.
 
