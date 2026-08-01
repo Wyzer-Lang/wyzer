@@ -105,12 +105,12 @@ base_type:
 
 enum_spec:
   | COLON t=base_type LPAREN e=expr RPAREN { (t, e) }
-  | COLON t=base_type { (t, Ast.ELit (LInt (0L, Some t))) }
+  | COLON t=base_type { (t, Ast.EPathVar ["iota"]) }
   | LPAREN e=expr RPAREN { (TU32, e) }
 
 enum_decl:
   | v=visibility ENUM name=IDENT spec=option(enum_spec) LBRACE members=separated_list(COMMA, enum_member) RBRACE
-    { let base_typ, iota_expr = match spec with Some (t, e) -> (t, e) | None -> (TU32, Ast.ELit (LInt (0L, Some TU32))) in
+    { let base_typ, iota_expr = match spec with Some (t, e) -> (t, e) | None -> (TU32, Ast.EPathVar ["iota"]) in
       { is_pub = v; name; base_typ; iota_expr; members } }
 
 override:

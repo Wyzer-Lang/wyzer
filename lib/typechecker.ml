@@ -804,7 +804,7 @@ let rec check_item env item =
   match item with
   | IFn f -> check_fn_decl env f
   | IEnum e ->
-      let iota_env = { env with vars = StringMap.add "iota" (TBase TU64, false, Live) env.vars } in
+      let iota_env = { env with vars = StringMap.add "iota" (TRole (TBase TU64, "Global"), false, Live) env.vars } in
       let _, _ = check_expr iota_env e.iota_expr (Some (TBase TU64)) in
       let current_iota = ref 0L in
       List.iter (fun (m: Ast.enum_member) ->
