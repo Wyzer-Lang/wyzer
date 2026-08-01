@@ -103,9 +103,14 @@ base_type:
   | id=IDENT { TCustom id }
   | GENERIC LT args=separated_nonempty_list(COMMA, typ) GT t=base_type { TGenericApp (args, t) }
 
+enum_spec:
+  | COLON t=base_type LPAREN e=expr RPAREN { (t, e) }
+  | COLON t=base_type { (t, Ast.ELit (LInt (0L, Some t))) }
+  | LPAREN e=expr RPAREN { (TU32, e) }
+
 enum_decl:
-  | v=visibility ENUM name=IDENT base=option(COLON t=base_type LPAREN e=expr RPAREN { (t, e) }) LBRACE members=separated_list(COMMA, enum_member) RBRACE
-    { let base_typ, iota_expr = match base with Some b -> b | None -> TU32, Ast.ELit (LInt (0L, Some TU32)) in
+  | v=visibility ENUM name=IDENT spec=option(enum_spec) LBRACE members=separated_list(COMMA, enum_member) RBRACE
+    { let base_typ, iota_expr = match spec with Some (t, e) -> (t, e) | None -> (TU32, Ast.ELit (LInt (0L, Some TU32))) in
       { is_pub = v; name; base_typ; iota_expr; members } }
 
 override:

@@ -1,0 +1,12 @@
+enum Color (iota) {
+    Red,
+    Orange,
+    Yellow
+}
+
+fn main() -> u32 {
+    std::io::println(Color::Red);
+    std::io::println(Color::Orange);
+    std::io::println(Color::Yellow);
+    return 0;
+}
