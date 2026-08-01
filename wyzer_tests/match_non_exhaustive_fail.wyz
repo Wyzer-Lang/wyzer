@@ -1,0 +1,18 @@
+pub enum Priority {
+    Low,
+    Medium,
+    High
+}
+
+fn check_priority(p: Priority) -> u32 {
+    match p {
+        Priority::Low => 1,
+        Priority::Medium => 2
+    }
+}
+
+fn main() {
+    let p: Priority = Priority::High;
+    let res: u32 = check_priority(p);
+    std::io::println(res);
+}

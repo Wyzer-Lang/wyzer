@@ -1,6 +1,7 @@
 open Ast
 
 module StringMap = Map.Make(String)
+module StringSet = Set.Make(String)
 
 type var_state = Live | Consumed
 
@@ -145,6 +146,62 @@ module ExprId = struct
 end
 module ExprMap = Hashtbl.Make(ExprId)
 let typed_ast_map : Ast.typ ExprMap.t = ExprMap.create 1024
+
+let check_match_exhaustiveness env typ arms =
+  let base_t = match typ with TRole (t, _) -> t | _ -> typ in
+  match base_t with
+  | TBase (TCustom enum_name) ->
+      (match StringMap.find_opt enum_name env.enums with
+      | Some enum_decl ->
+          let initial_set =
+            List.fold_left (fun acc (m : Ast.enum_member) -> StringSet.add m.name acc) StringSet.empty enum_decl.members
+          in
+          let remaining = List.fold_left (fun set (pat, _) ->
+            let rec process_pat set p =
+              match p with
+              | PWildcard | PIdent _ -> StringSet.empty
+              | PVariant (v, _) -> StringSet.remove v set
+              | PLit _ -> set
+            in
+            process_pat set pat
+          ) initial_set arms in
+          if not (StringSet.is_empty remaining) then
+            raise (TypeError ("Non-exhaustive pattern matching for enum " ^ enum_name ^ ": missing variant(s) " ^ String.concat ", " (StringSet.elements remaining)))
+      | None -> ())
+  | TResult _ ->
+      let initial_set = StringSet.of_list ["Ok"; "Err"] in
+      let remaining = List.fold_left (fun set (pat, _) ->
+        let rec process_pat set p =
+          match p with
+          | PWildcard | PIdent _ -> StringSet.empty
+          | PVariant (v, _) -> StringSet.remove v set
+          | PLit _ -> set
+        in
+        process_pat set pat
+      ) initial_set arms in
+      if not (StringSet.is_empty remaining) then
+        raise (TypeError ("Non-exhaustive pattern matching for Result: missing variant(s) " ^ String.concat ", " (StringSet.elements remaining)))
+  | TBase TBool ->
+      let initial_set = StringSet.of_list ["true"; "false"] in
+      let remaining = List.fold_left (fun set (pat, _) ->
+        let rec process_pat set p =
+          match p with
+          | PWildcard | PIdent _ -> StringSet.empty
+          | PLit (LBool b) -> StringSet.remove (string_of_bool b) set
+          | _ -> set
+        in
+        process_pat set pat
+      ) initial_set arms in
+      if not (StringSet.is_empty remaining) then
+        raise (TypeError ("Non-exhaustive pattern matching for bool: missing value(s) " ^ String.concat ", " (StringSet.elements remaining)))
+  | _ ->
+      let has_catch_all = List.exists (fun (pat, _) ->
+        match pat with
+        | PWildcard | PIdent _ -> true
+        | _ -> false
+      ) arms in
+      if not has_catch_all then
+        raise (TypeError ("Non-exhaustive pattern matching on non-enum type: requires a wildcard pattern '_' or identifier pattern"))
 
 let rec check_expr_impl env e expected_typ_opt =
   match e with
@@ -459,6 +516,7 @@ let rec check_expr_impl env e expected_typ_opt =
       | _ -> raise (TypeError "Field access on non-struct type"))
   | EMatch (e, arms) ->
       let t_e, env1 = check_expr env e None in
+      check_match_exhaustiveness env1 t_e arms;
       let arm_results = List.map (fun (pat, e_arm) ->
         let rec bind_pat env pat typ =
           match pat with

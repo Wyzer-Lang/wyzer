@@ -1,0 +1,19 @@
+pub enum Color {
+    Red,
+    Green,
+    Blue,
+    Yellow
+}
+
+fn is_red(c: Color) -> u32 {
+    match c {
+        Color::Red => 1,
+        _ => 0
+    }
+}
+
+fn main() {
+    let c: Color = Color::Green;
+    let res: u32 = is_red(c);
+    std::io::println(res);
+}
