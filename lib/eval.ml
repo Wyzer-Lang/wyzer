@@ -26,6 +26,29 @@ module IntMap = Map.Make(Int)
 let heap : heap_entry IntMap.t ref = ref IntMap.empty
 let next_ptr = ref 1
 
+let split_string s delim =
+  if delim = "" then List.init (String.length s) (fun i -> String.make 1 s.[i])
+  else
+    let len_d = String.length delim in
+    let rec aux pos =
+      if pos > String.length s then []
+      else if pos = String.length s then [""]
+      else
+        let rec find_from p =
+          if p + len_d > String.length s then None
+          else if String.sub s p len_d = delim then Some p
+          else find_from (p + 1)
+        in
+        match find_from pos with
+        | Some idx -> String.sub s pos (idx - pos) :: aux (idx + len_d)
+        | None -> [String.sub s pos (String.length s - pos)]
+    in
+    aux 0
+
+let replace_string s from_str to_str =
+  if from_str = "" then s
+  else String.concat to_str (split_string s from_str)
+
 let rec print_val oc is_nl arg =
   (match arg with
   | VInt i -> if is_nl then Printf.fprintf oc "%Ld\n" i else Printf.fprintf oc "%Ld" i
@@ -166,6 +189,192 @@ let rec eval_expr env e =
           let arg = eval_expr env (List.hd args) in
           print_val stderr is_nl arg;
           VUnit
+        ) else if resolved_path = ["std"; "io"; "read_line"] then (
+          try VStr (read_line ()) with End_of_file -> VStr ""
+        ) else if resolved_path = ["std"; "fs"; "read_file"] then (
+          let filename = match eval_expr env (List.hd args) with VStr s -> s | _ -> raise (EvalError "Expected string path") in
+          try
+            let ic = open_in_bin filename in
+            let len = in_channel_length ic in
+            let content = really_input_string ic len in
+            close_in ic;
+            VStr content
+          with _ -> VStr ""
+        ) else if resolved_path = ["std"; "fs"; "write_file"] then (
+          let filename = match eval_expr env (List.hd args) with VStr s -> s | _ -> raise (EvalError "Expected string path") in
+          let content = match eval_expr env (List.nth args 1) with VStr s -> s | _ -> raise (EvalError "Expected string content") in
+          try
+            let oc = open_out_bin filename in
+            output_string oc content;
+            close_out oc;
+            VBool true
+          with _ -> VBool false
+        ) else if resolved_path = ["std"; "fs"; "file_exists"] then (
+          let filename = match eval_expr env (List.hd args) with VStr s -> s | _ -> raise (EvalError "Expected string path") in
+          VBool (Sys.file_exists filename)
+        ) else if resolved_path = ["std"; "process"; "exit"] then (
+          let code = match eval_expr env (List.hd args) with VInt i -> Int64.to_int i | _ -> 0 in
+          exit code
+        ) else if resolved_path = ["std"; "process"; "sleep"] then (
+          let ms = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i /. 1000.0 | _ -> 0.0 in
+          Unix.sleepf ms;
+          VUnit
+        ) else if resolved_path = ["std"; "time"; "now_ms"] then (
+          VInt (Int64.of_float (Unix.gettimeofday () *. 1000.0))
+        ) else if resolved_path = ["std"; "process"; "args"] then (
+          VArray (Array.map (fun s -> VStr s) Sys.argv)
+        ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "string" then (
+          let fn_name = List.nth resolved_path 2 in
+          match fn_name with
+          | "len" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              VInt (Int64.of_int (String.length s))
+          | "concat" ->
+              let s1 = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              let s2 = match eval_expr env (List.nth args 1) with VStr s -> s | _ -> "" in
+              VStr (s1 ^ s2)
+          | "to_uppercase" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              VStr (String.uppercase_ascii s)
+          | "to_lowercase" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              VStr (String.lowercase_ascii s)
+          | "trim" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              VStr (String.trim s)
+          | "replace" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              let from_s = match eval_expr env (List.nth args 1) with VStr s -> s | _ -> "" in
+              let to_s = match eval_expr env (List.nth args 2) with VStr s -> s | _ -> "" in
+              VStr (replace_string s from_s to_s)
+          | "substring" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              let st = match eval_expr env (List.nth args 1) with VInt i -> Int64.to_int i | _ -> 0 in
+              let len = match eval_expr env (List.nth args 2) with VInt i -> Int64.to_int i | _ -> 0 in
+              let st = max 0 (min (String.length s) st) in
+              let len = max 0 (min (String.length s - st) len) in
+              VStr (String.sub s st len)
+          | "char_at" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              let idx = match eval_expr env (List.nth args 1) with VInt i -> Int64.to_int i | _ -> 0 in
+              if idx >= 0 && idx < String.length s then VStr (String.make 1 s.[idx])
+              else VStr ""
+          | "starts_with" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              let pref = match eval_expr env (List.nth args 1) with VStr s -> s | _ -> "" in
+              VBool (String.starts_with ~prefix:pref s)
+          | "ends_with" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              let suf = match eval_expr env (List.nth args 1) with VStr s -> s | _ -> "" in
+              VBool (String.ends_with ~suffix:suf s)
+          | "split" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              let delim = match eval_expr env (List.nth args 1) with VStr s -> s | _ -> "" in
+              let parts = split_string s delim in
+              VArray (Array.of_list (List.map (fun x -> VStr x) parts))
+          | _ -> raise (EvalError ("Unknown string function: " ^ fn_name))
+        ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "conv" then (
+          let fn_name = List.nth resolved_path 2 in
+          match fn_name with
+          | "parse_int" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              (try
+                 let i = Int64.of_string (String.trim s) in
+                 let ptr = !next_ptr in incr next_ptr;
+                 heap := IntMap.add ptr { ref_count = ref 1; data = HOk (VInt i) } !heap;
+                 VPtr ptr
+               with _ ->
+                 let ptr = !next_ptr in incr next_ptr;
+                 heap := IntMap.add ptr { ref_count = ref 1; data = HErr (VStr "Invalid integer format") } !heap;
+                 VPtr ptr)
+          | "parse_bool" ->
+              let s = match eval_expr env (List.hd args) with VStr s -> s | _ -> "" in
+              (match String.lowercase_ascii (String.trim s) with
+               | "true" | "1" ->
+                   let ptr = !next_ptr in incr next_ptr;
+                   heap := IntMap.add ptr { ref_count = ref 1; data = HOk (VBool true) } !heap;
+                   VPtr ptr
+               | "false" | "0" ->
+                   let ptr = !next_ptr in incr next_ptr;
+                   heap := IntMap.add ptr { ref_count = ref 1; data = HOk (VBool false) } !heap;
+                   VPtr ptr
+               | _ ->
+                   let ptr = !next_ptr in incr next_ptr;
+                   heap := IntMap.add ptr { ref_count = ref 1; data = HErr (VStr "Invalid boolean format") } !heap;
+                   VPtr ptr)
+          | "to_str" ->
+              let v = eval_expr env (List.hd args) in
+              VStr (show_value v)
+          | _ -> raise (EvalError ("Unknown conv function: " ^ fn_name))
+        ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "collections" then (
+          let fn_name = List.nth resolved_path 2 in
+          match fn_name with
+          | "len" ->
+              let arr = match eval_expr env (List.hd args) with VArray a -> a | _ -> [||] in
+              VInt (Int64.of_int (Array.length arr))
+          | "push" ->
+              let arr = match eval_expr env (List.hd args) with VArray a -> a | _ -> [||] in
+              let elem = eval_expr env (List.nth args 1) in
+              VArray (Array.append arr [| elem |])
+          | "pop" ->
+              let arr = match eval_expr env (List.hd args) with VArray a -> a | _ -> [||] in
+              let len = Array.length arr in
+              if len = 0 then VArray [||]
+              else VArray (Array.sub arr 0 (len - 1))
+          | "reverse" ->
+              let arr = match eval_expr env (List.hd args) with VArray a -> a | _ -> [||] in
+              let copy = Array.copy arr in
+              let len = Array.length copy in
+              for i = 0 to (len / 2) - 1 do
+                let tmp = copy.(i) in
+                copy.(i) <- copy.(len - 1 - i);
+                copy.(len - 1 - i) <- tmp
+              done;
+              VArray copy
+          | "contains" ->
+              let arr = match eval_expr env (List.hd args) with VArray a -> a | _ -> [||] in
+              let target = eval_expr env (List.nth args 1) in
+              VBool (Array.exists (fun item -> item = target) arr)
+          | _ -> raise (EvalError ("Unknown collections function: " ^ fn_name))
+        ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "math" then (
+          let fn_name = List.nth resolved_path 2 in
+          match fn_name with
+          | "abs" ->
+              let v = match eval_expr env (List.hd args) with VInt i -> Int64.abs i | _ -> 0L in
+              VInt v
+          | "min" ->
+              let v1 = match eval_expr env (List.hd args) with VInt i -> i | _ -> 0L in
+              let v2 = match eval_expr env (List.nth args 1) with VInt i -> i | _ -> 0L in
+              VInt (Int64.min v1 v2)
+          | "max" ->
+              let v1 = match eval_expr env (List.hd args) with VInt i -> i | _ -> 0L in
+              let v2 = match eval_expr env (List.nth args 1) with VInt i -> i | _ -> 0L in
+              VInt (Int64.max v1 v2)
+          | "clamp" ->
+              let v = match eval_expr env (List.hd args) with VInt i -> i | _ -> 0L in
+              let min_v = match eval_expr env (List.nth args 1) with VInt i -> i | _ -> 0L in
+              let max_v = match eval_expr env (List.nth args 2) with VInt i -> i | _ -> 0L in
+              VInt (Int64.max min_v (Int64.min max_v v))
+          | "sin" ->
+              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
+              VInt (Int64.of_float (sin f))
+          | "cos" ->
+              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
+              VInt (Int64.of_float (cos f))
+          | "tan" ->
+              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
+              VInt (Int64.of_float (tan f))
+          | "sqrt" ->
+              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
+              VInt (Int64.of_float (sqrt f))
+          | "log" ->
+              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
+              VInt (Int64.of_float (log f))
+          | "pow" ->
+              let b = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
+              let e = match eval_expr env (List.nth args 1) with VInt i -> Int64.to_float i | _ -> 0.0 in
+              VInt (Int64.of_float (Float.pow b e))
+          | _ -> raise (EvalError ("Unknown math function: " ^ fn_name))
         ) else if resolved_path = ["std"; "hw"; "bind_interrupt"] then (
           let irq_val = eval_expr env (List.hd args) in
           let handler_name = match List.nth args 1 with
@@ -322,19 +531,39 @@ let rec eval_expr env e =
                   (match (IntMap.find ptr !heap).data with
                   | HOk _ when name = "Ok" -> true, env
                   | HErr _ when name = "Err" -> true, env
+                  | HEnum (en, vn, []) when name = vn || name = en ^ "_" ^ vn || name = en ^ "::" ^ vn -> true, env
                   | _ -> false, env)
-              | PVariant (name, Some [p]), VPtr ptr -> 
+              | PVariant (name, pats_opt), VPtr ptr -> 
                   (match (IntMap.find ptr !heap).data with
-                  | HOk inner when name = "Ok" -> 
-                      (match p with
-                      | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
-                      | PWildcard -> true, env
-                      | _ -> false, env)
-                  | HErr inner when name = "Err" -> 
-                      (match p with
-                      | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
-                      | PWildcard -> true, env
-                      | _ -> false, env)
+                  | HOk inner when name = "Ok" && pats_opt <> None -> 
+                      let pats = Option.get pats_opt in
+                      if List.length pats = 1 then
+                        match List.hd pats with
+                        | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
+                        | PWildcard -> true, env
+                        | _ -> false, env
+                      else false, env
+                  | HErr inner when name = "Err" && pats_opt <> None -> 
+                      let pats = Option.get pats_opt in
+                      if List.length pats = 1 then
+                        match List.hd pats with
+                        | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
+                        | PWildcard -> true, env
+                        | _ -> false, env
+                      else false, env
+                  | HEnum (en, vn, payload) when name = vn || name = en ^ "_" ^ vn || name = en ^ "::" ^ vn ->
+                      let pats = Option.value pats_opt ~default:[] in
+                      if List.length pats = List.length payload then
+                        let rec bind_pats pats vals current_vars =
+                          match pats, vals with
+                          | [], [] -> true, current_vars
+                          | PWildcard :: pt_rest, _ :: val_rest -> bind_pats pt_rest val_rest current_vars
+                          | PIdent id :: pt_rest, val_item :: val_rest -> bind_pats pt_rest val_rest (StringMap.add id (ref val_item) current_vars)
+                          | _ -> false, current_vars
+                        in
+                        let ok, new_vars = bind_pats pats payload env.vars in
+                        ok, { env with vars = new_vars }
+                      else false, env
                   | _ -> false, env)
               | _ -> false, env
             in
@@ -422,7 +651,16 @@ let rec eval_expr env e =
         )
       in
       wait ()
-  | EMethodCall _ -> raise (EvalError "EMethodCall not desugared")
+  | EMethodCall (obj, method_name, args, resolved_name_ref) ->
+      let mangled_name = match !resolved_name_ref with
+        | Some name -> name
+        | None ->
+            let suffix = "_" ^ method_name in
+            (match StringMap.bindings env.funcs |> List.find_opt (fun (k, _) -> String.ends_with ~suffix k) with
+             | Some (name, _) -> name
+             | None -> raise (EvalError ("Cannot resolve method " ^ method_name)))
+      in
+      eval_expr env (ECall (mangled_name, obj :: args))
   | ESizeOf _ | ETypeOf _ | EComptime _ -> raise (EvalError "sizeof/typeof/comptime should have been evaluated at compile-time")
 
 and eval_stmt env stmt =
@@ -539,7 +777,13 @@ let rec build_env env prog =
         { e with globals = StringMap.add name (ref v) e.globals }
     | IGeneric (_, i) -> eval_item e i
     | IRole _ -> e
-    | ITrait _ | IImpl _ -> e
+    | ITrait _ -> e
+    | IImpl impl ->
+        let new_funcs = List.fold_left (fun acc (m: Ast.fn_decl) ->
+          let mangled = impl.trait_name ^ "_" ^ (Ast.show_typ impl.for_typ |> String.map (function ' ' | '(' | ')' -> '_' | c -> c)) ^ "_" ^ m.name in
+          StringMap.add mangled m acc
+        ) e.funcs impl.methods in
+        { e with funcs = new_funcs }
     | IMod m ->
         let mod_path = Filename.concat e.project_root (m.name ^ ".wyz") in
         if not (Sys.file_exists mod_path) then
