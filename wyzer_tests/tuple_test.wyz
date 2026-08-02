@@ -1,0 +1,13 @@
+fn get_data() -> (u32, str) {
+    return (42, "hello tuples");
+}
+
+fn print_tuple(num: u32, text: str) {
+    std::io::println(num);
+    std::io::println(text);
+}
+
+fn main() {
+    let (num, text) = get_data();
+    print_tuple(num, text);
+}

@@ -1,0 +1,31 @@
+generic<T> struct Box {
+    value: T
+}
+
+generic<T> fn print_box_val(b: generic<T> Box) {
+    // We don't have printing of generic T easily without std,
+    // but we can just return it to test
+}
+
+generic<T> fn wrap_in_box(val: T) -> generic<T> Box {
+    // EStruct without generic<>
+    return Box { value: val };
+}
+
+generic<T> fn consume(v: T) {
+    // Automatically dropped here by perceus when function returns
+}
+
+fn main() {
+    // 1. Generic inference for struct init!
+    let my_box = Box { value: 42 }; 
+    
+    // 2. Generic inference for function call!
+    let another_box = wrap_in_box("hello inference");
+    
+    // Print something to verify it ran
+    std::io::println(42);
+    
+    consume(my_box);
+    consume(another_box);
+}
