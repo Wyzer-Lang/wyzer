@@ -30,10 +30,13 @@ fn process_result(r: Message) -> u32 {
 fn main() {
     let r1: Message = Message::Ok(42u32);
     let o1: u32 = process_result(r1);
+    std::io::println(o1);
 
     let r2: Message = Message::Err("Network Timeout");
     let o2: u32 = process_result(r2);
+    std::io::println(o2);
     
     let r3: Message = Message::None;
     let o3: u32 = process_result(r3);
+    std::io::println(o3);
 }

@@ -44,20 +44,7 @@ let process_file filename =
     let command = if Array.length Sys.argv > 1 then Sys.argv.(1) else "run" in
     if command = "build" then (
       let role = Option.value !target_role_opt ~default:"Poly" in
-      let llvm_module = Codegen.generate_llvm prog_transformed role in
-      let base_name = Filename.remove_extension (Filename.basename filename) in
-      let out_ll = sprintf "%s_%s.ll" base_name role in
-      let out_bin = sprintf "%s_%s" base_name role in
-      
-      Llvm.print_module out_ll llvm_module;
-      
-      printf "Generated %s. Compiling...\n" out_ll;
-      let clang_cmd = sprintf "clang -O3 %s lib/wyzer_runtime.c -o %s" out_ll out_bin in
-      let status = Sys.command clang_cmd in
-      if status = 0 then
-        printf "Successfully built %s\n" out_bin
-      else
-        fprintf stderr "Error: clang compilation failed\n"
+      Codegen.generate_llvm prog_transformed role
     ) else (
       Eval.eval_program project_root prog_transformed (Option.value !target_role_opt ~default:"Poly")
     )

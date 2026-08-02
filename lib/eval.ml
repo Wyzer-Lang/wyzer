@@ -543,24 +543,40 @@ let rec eval_expr env e =
             let matches, env_ext = match pat, v with
               | PWildcard, _ -> true, env
               | PIdent id, _ -> true, { env with vars = StringMap.add id (ref v) env.vars }
-              | PVariant (name, None), VStr s -> (name = s), env
+              | PVariant (name, None), VStr s ->
+                  let v_name = if String.contains name ':' then List.hd (List.rev (Str.split (Str.regexp_string "::") name)) else name in
+                  (v_name = s), env
               | PVariant (name, None), VPtr ptr -> 
+                  let v_name = if String.contains name ':' then List.hd (List.rev (Str.split (Str.regexp_string "::") name)) else name in
                   (match (IntMap.find ptr !heap).data with
-                  | HOk _ when name = "Ok" -> true, env
-                  | HErr _ when name = "Err" -> true, env
+                  | HOk _ when v_name = "Ok" -> true, env
+                  | HErr _ when v_name = "Err" -> true, env
+                  | HEnum (_, ev_name, _) when v_name = ev_name -> true, env
                   | _ -> false, env)
-              | PVariant (name, Some [p]), VPtr ptr -> 
+              | PVariant (name, Some pats), VPtr ptr -> 
+                  let v_name = if String.contains name ':' then List.hd (List.rev (Str.split (Str.regexp_string "::") name)) else name in
                   (match (IntMap.find ptr !heap).data with
-                  | HOk inner when name = "Ok" -> 
-                      (match p with
+                  | HOk inner when v_name = "Ok" && List.length pats = 1 -> 
+                      (match List.hd pats with
                       | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
                       | PWildcard -> true, env
                       | _ -> false, env)
-                  | HErr inner when name = "Err" -> 
-                      (match p with
+                  | HErr inner when v_name = "Err" && List.length pats = 1 -> 
+                      (match List.hd pats with
                       | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
                       | PWildcard -> true, env
                       | _ -> false, env)
+                  | HEnum (_, ev_name, args) when v_name = ev_name && List.length pats = List.length args ->
+                      let rec match_pats env_acc ps avs =
+                        match ps, avs with
+                        | [], [] -> true, env_acc
+                        | (PIdent id) :: ps_rest, a :: avs_rest ->
+                            match_pats { env_acc with vars = StringMap.add id (ref a) env_acc.vars } ps_rest avs_rest
+                        | PWildcard :: ps_rest, _ :: avs_rest ->
+                            match_pats env_acc ps_rest avs_rest
+                        | _ -> false, env
+                      in
+                      match_pats env pats args
                   | _ -> false, env)
               | _ -> false, env
             in
@@ -648,7 +664,10 @@ let rec eval_expr env e =
         )
       in
       wait ()
-  | EMethodCall _ -> raise (EvalError "EMethodCall not desugared")
+  | EMethodCall (obj, _method_name, args, resolved_name_ref) ->
+      (match !resolved_name_ref with
+       | Some mangled_name -> eval_expr env (ECall (mangled_name, obj :: args))
+       | None -> raise (EvalError "EMethodCall not desugared"))
   | ESizeOf _ | ETypeOf _ | EComptime _ -> raise (EvalError "sizeof/typeof/comptime should have been evaluated at compile-time")
 
 and eval_stmt env stmt =
@@ -765,7 +784,13 @@ let rec build_env env prog =
         { e with globals = StringMap.add name (ref v) e.globals }
     | IGeneric (_, i) -> eval_item e i
     | IRole _ -> e
-    | ITrait _ | IImpl _ -> e
+    | ITrait _ -> e
+    | IImpl i ->
+        List.fold_left (fun acc (m: fn_decl) ->
+          let mangled_name = i.trait_name ^ "_" ^ (Ast.show_typ i.for_typ |> String.map (function ' ' | '(' | ')' -> '_' | c -> c)) ^ "_" ^ m.name in
+          let mangled_m = { m with name = mangled_name } in
+          { acc with funcs = StringMap.add mangled_name mangled_m acc.funcs }
+        ) e i.methods
     | IMod m ->
         let mod_path = Filename.concat e.project_root (m.name ^ ".wyz") in
         if not (Sys.file_exists mod_path) then

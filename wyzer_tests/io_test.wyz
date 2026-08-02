@@ -21,7 +21,6 @@ fn main() {
     // Test standard streams
     let out = std::io::stdout;
     let err = std::io::stderr;
-    
-    // In actual Wyzer code, they would call `out.write(...)` if traits were fully set up,
-    // but for now, we just ensure they typecheck as Stream handles.
+    std::io::println(out);
+    std::io::println(err);
 }

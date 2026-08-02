@@ -1,3 +1,5 @@
+role @C;
+
 extern fn read_file(path: str@C) @ C -> str;
 extern fn puts(s: str@C) @ C -> i32;
 extern fn write_file(path: str@C, content: str@C) @ C -> i32;

@@ -81,6 +81,11 @@ let rec is_printable t =
   | TResult _ -> true
   | TRole (inner, _) -> is_printable inner
 
+let rec is_primitive_type = function
+  | TBase (TU8 | TU16 | TU32 | TU64 | TUSize | TI8 | TI16 | TI32 | TI64 | TISize | TBool | TStr | TUnit) -> true
+  | TRole (inner, _) -> is_primitive_type inner
+  | _ -> false
+
 let rec substitute_typ subst t =
   match t with
   | TBase (TCustom id) ->
@@ -216,6 +221,7 @@ let rec check_expr_impl env e expected_typ_opt =
       | None ->
           (match expected_typ_opt with
           | Some (TBase t) when is_integer_type t -> TBase t, env
+          | Some (TRole (TBase t, _)) when is_integer_type t -> TBase t, env
           | _ -> TBase TI32, env))
   | ELit (LBool _) -> TBase TBool, env
   | ELit (LStr _) -> TBase TStr, env
@@ -226,10 +232,7 @@ let rec check_expr_impl env e expected_typ_opt =
           let var_role = match t with | TRole (_, r) -> r | _ -> "Main" in
           if var_role <> "Global" && var_role <> env.current_role && env.current_role <> "Poly" then
             raise (TypeError (Printf.sprintf "Cannot access variable %s belonging to role %s from role %s" name var_role env.current_role));
-          let new_vars = match t with
-            | TRole _ -> StringMap.add name (t, is_mut, Consumed) env.vars
-            | _ -> env.vars
-          in
+          let new_vars = if is_primitive_type t then env.vars else StringMap.add name (t, is_mut, Consumed) env.vars in
           t, { env with vars = new_vars }
       | None ->
           (match StringMap.find_opt name env.globals with
@@ -239,6 +242,7 @@ let rec check_expr_impl env e expected_typ_opt =
                 raise (TypeError (Printf.sprintf "Cannot access global %s belonging to role %s from role %s" name var_role env.current_role));
               t, env
           | None -> raise (TypeError ("Undefined variable: " ^ name))))
+  | EPathVar [name] -> check_expr env (EVar name) expected_typ_opt
   | EPathVar path ->
       let resolved_path =
         match StringMap.find_opt (List.hd path) env.imports with
@@ -613,11 +617,31 @@ let rec check_expr_impl env e expected_typ_opt =
       ) else
         TBase TStr, env
   | EOk (e, _) ->
-      let t, env1 = check_expr env e None in
-      TResult (t, TBase (TCustom "_")), env1
+      let expected_elem = match expected_typ_opt with
+        | Some (TResult (t, _)) -> Some t
+        | Some (TRole (TResult (t, _), _)) -> Some t
+        | _ -> None
+      in
+      let t, env1 = check_expr env e expected_elem in
+      let err_t = match expected_typ_opt with
+        | Some (TResult (_, err_t)) -> err_t
+        | Some (TRole (TResult (_, err_t), _)) -> err_t
+        | _ -> TBase (TCustom "_")
+      in
+      TResult (t, err_t), env1
   | EErr (e, _) ->
-      let t, env1 = check_expr env e None in
-      TResult (TBase (TCustom "_"), t), env1
+      let expected_err = match expected_typ_opt with
+        | Some (TResult (_, err_t)) -> Some err_t
+        | Some (TRole (TResult (_, err_t), _)) -> Some err_t
+        | _ -> None
+      in
+      let t, env1 = check_expr env e expected_err in
+      let ok_t = match expected_typ_opt with
+        | Some (TResult (ok_t, _)) -> ok_t
+        | Some (TRole (TResult (ok_t, _), _)) -> ok_t
+        | _ -> TBase (TCustom "_")
+      in
+      TResult (ok_t, t), env1
   | EIf (cond, thn, els) ->
       let t_cond, env1 = check_expr env cond (Some (TBase TBool)) in
       if not (is_bool_type t_cond) then raise (TypeError "if condition must be bool");
@@ -869,6 +893,13 @@ and check_stmt env stmt =
               | None -> raise (TypeError ("Undefined variable in assignment: " ^ name))))
       | EIndex (arr, i) ->
           let t_arr, env_arr = check_expr env arr None in
+          let env_arr = match arr with
+            | EVar name ->
+                (match StringMap.find_opt name env_arr.vars with
+                 | Some (v_t, is_mut, _) -> { env_arr with vars = StringMap.add name (v_t, is_mut, Live) env_arr.vars }
+                 | None -> env_arr)
+            | _ -> env_arr
+          in
           let t_i, env_i = check_expr env_arr i None in
           if not (is_int_type t_i) then raise (TypeError "Array index must be an integer");
           let base_arr_t = match t_arr with | TRole (inner, _) -> inner | _ -> t_arr in
@@ -911,10 +942,8 @@ and check_stmt env stmt =
       | None, Some _ -> raise (TypeError "Function must return a value")
       in
       StringMap.iter (fun name (t, _, state) ->
-        match t with
-        | TRole _ when state = Live -> 
-            raise (TypeError ("Cannot return early with unconsumed linear resource: " ^ name))
-        | _ -> ()
+        if state = Live && not (is_primitive_type t) then
+          raise (TypeError ("Cannot return early with unconsumed linear resource: " ^ name))
       ) env1.vars;
       env1
   | SDrop x ->
@@ -941,10 +970,8 @@ let check_fn_decl env (fn: Ast.fn_decl) =
    | Some b -> 
        let env_final, _ = check_block local_env b in
        StringMap.iter (fun name (t, _, state) ->
-         match t with
-         | TRole _ when state = Live -> 
-             raise (TypeError ("Function " ^ fn.name ^ " ends with unconsumed linear resource: " ^ name))
-         | _ -> ()
+         if state = Live && not (is_primitive_type t) then
+           raise (TypeError ("Function " ^ fn.name ^ " ends with unconsumed linear resource: " ^ name))
        ) env_final.vars
    | None -> if not fn.is_extern then raise (TypeError ("Function " ^ fn.name ^ " must have a body")));
   { env with funcs = StringMap.add fn.name fn env.funcs }
