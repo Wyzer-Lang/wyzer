@@ -1,0 +1,96 @@
+fn print_ok_int(val: i64) {
+    std::io::println(f"Parsed int: {val}");
+}
+
+fn print_err_int(e: str) {
+    std::io::println(f"Parse int failed: {e}");
+}
+
+fn print_ok_bool(val: bool) {
+    std::io::println(f"Parsed bool: {val}");
+}
+
+fn print_err_bool(e: str) {
+    std::io::println(f"Parse bool failed: {e}");
+}
+
+fn main() {
+    std::io::println("=== Wyzer Engine & Standard Library Test Suite ===");
+
+    // 1. std::string
+    let s = "  Hello, Wyzer Language!  ";
+    let trimmed = std::string::trim(s);
+    std::io::println(f"Trimmed: '{trimmed}'");
+
+    let upper = std::string::to_uppercase(trimmed);
+    std::io::println(f"Uppercase: {upper}");
+
+    let lower = std::string::to_lowercase(trimmed);
+    std::io::println(f"Lowercase: {lower}");
+
+    let s2 = "Hello, Wyzer Language!";
+    let len = std::string::len(s2);
+    std::io::println(f"Length: {len}");
+
+    let starts = std::string::starts_with(s2, "Hello");
+    let ends = std::string::ends_with(s2, "Language!");
+    std::io::println(f"Starts with 'Hello': {starts}, Ends with 'Language!': {ends}");
+
+    let replaced = std::string::replace(s2, "Wyzer", "Awesome Wyzer");
+    std::io::println(f"Replaced: {replaced}");
+
+    let sub = std::string::substring(s2, 0, 5);
+    std::io::println(f"Substring: {sub}");
+
+    let ch = std::string::char_at(s2, 7);
+    std::io::println(f"Char at 7: {ch}");
+
+    let parts = std::string::split("apple,banana,cherry", ",");
+    let parts_len = std::collections::len(parts);
+    std::io::println(f"Split parts count: {parts_len}");
+
+    // 2. std::math
+    let clamped = std::math::clamp(150, 0, 100);
+    std::io::println(f"Clamp(150, 0, 100): {clamped}");
+
+    // 3. std::conv
+    let res_int = std::conv::parse_int("12345");
+    match res_int {
+        Ok(val) => print_ok_int(val),
+        Err(e) => print_err_int(e)
+    };
+
+    let res_bool = std::conv::parse_bool("true");
+    match res_bool {
+        Ok(val) => print_ok_bool(val),
+        Err(e) => print_err_bool(e)
+    };
+
+    let str_val = std::conv::to_str(999);
+    std::io::println(f"Converted to str: {str_val}");
+
+    // 4. std::collections
+    let arr = [10, 20, 30];
+    let contains_20 = std::collections::contains(arr, 20);
+    std::io::println(f"Contains 20: {contains_20}");
+
+    let pushed = std::collections::push(arr, 40);
+    let pushed_len = std::collections::len(pushed);
+    std::io::println(f"Array length after push: {pushed_len}");
+
+    let popped = std::collections::pop(pushed);
+    let popped_len = std::collections::len(popped);
+    std::io::println(f"Array length after pop: {popped_len}");
+
+    let rev = std::collections::reverse(popped);
+    let rev_len = std::collections::len(rev);
+    std::io::println(f"Reversed array len: {rev_len}");
+
+    // 5. Array Index Assignment in-place
+    var mut_arr = [1, 2, 3];
+    mut_arr[1] = 99;
+    let elem_1 = mut_arr[1];
+    std::io::println(f"Mutated array index 1: {elem_1}");
+
+    std::io::println("=== All Tests Completed Successfully ===");
+}

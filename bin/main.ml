@@ -49,7 +49,7 @@ let process_file filename =
       let out_ll = sprintf "%s_%s.ll" base_name role in
       let out_bin = sprintf "%s_%s" base_name role in
       
-      Llvm.print_module out_ll llvm_module;
+      Codegen.Llvm.print_module out_ll llvm_module;
       
       printf "Generated %s. Compiling...\n" out_ll;
       let clang_cmd = sprintf "clang -O3 %s lib/wyzer_runtime.c -o %s" out_ll out_bin in

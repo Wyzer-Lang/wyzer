@@ -1,0 +1,36 @@
+fn main() {
+    std::io::println("--- Standard Library Test Suite ---");
+
+    // Math tests
+    let a = -42;
+    let abs_a = std::math::abs(a);
+    std::io::println(f"Abs(-42) = {abs_a}");
+
+    let m1 = std::math::min(10, 20);
+    let m2 = std::math::max(10, 20);
+    std::io::println(f"Min(10, 20) = {m1}, Max(10, 20) = {m2}");
+
+    let p = std::math::pow(2, 8);
+    let s = std::math::sqrt(100);
+    std::io::println(f"Pow(2, 8) = {p}, Sqrt(100) = {s}");
+
+    // File System tests
+    let test_file = "/tmp/wyzer_std_test.txt";
+    let content = "Hello Wyzer Standard Library!";
+    let write_ok = std::fs::write_file(test_file, content);
+    std::io::println(f"Write File Success: {write_ok}");
+
+    let exists = std::fs::file_exists(test_file);
+    std::io::println(f"File Exists: {exists}");
+
+    let read_back = std::fs::read_file(test_file);
+    std::io::println(f"Read File Content: {read_back}");
+
+    // Time tests
+    let now = std::time::now_ms();
+    std::io::println(f"Current timestamp ms: {now}");
+
+    // Process sleep test
+    std::process::sleep(50);
+    std::io::println("Slept for 50ms successfully!");
+}

@@ -76,6 +76,21 @@ let rec is_printable t =
   | TResult _ -> true
   | TRole (inner, _) -> is_printable inner
 
+let rec is_copy_type t =
+  match t with
+  | TRole (inner, _) -> is_copy_type inner
+  | TBase (TU8 | TU16 | TU32 | TU64 | TUSize | TI8 | TI16 | TI32 | TI64 | TISize | TBool | TStr | TUnit) -> true
+  | TBase (TCustom _) -> true
+  | TArray _ -> true
+  | _ -> false
+
+let rec unwrap_role t =
+  match t with
+  | TRole (inner, _) -> unwrap_role inner
+  | _ -> t
+
+
+
 let rec substitute_typ subst t =
   match t with
   | TBase (TCustom id) ->
@@ -209,7 +224,11 @@ let rec check_expr_impl env e expected_typ_opt =
       (match t_opt with
       | Some t -> TBase t, env
       | None ->
-          (match expected_typ_opt with
+          let unwrap_expected = match expected_typ_opt with
+            | Some (TRole (inner, _)) -> Some inner
+            | other -> other
+          in
+          (match unwrap_expected with
           | Some (TBase t) when is_integer_type t -> TBase t, env
           | _ -> TBase TI32, env))
   | ELit (LBool _) -> TBase TBool, env
@@ -222,7 +241,7 @@ let rec check_expr_impl env e expected_typ_opt =
           if var_role <> "Global" && var_role <> env.current_role && env.current_role <> "Poly" then
             raise (TypeError (Printf.sprintf "Cannot access variable %s belonging to role %s from role %s" name var_role env.current_role));
           let new_vars = match t with
-            | TRole _ -> StringMap.add name (t, is_mut, Consumed) env.vars
+            | TRole _ when not (is_copy_type t) -> StringMap.add name (t, is_mut, Consumed) env.vars
             | _ -> env.vars
           in
           t, { env with vars = new_vars }
@@ -367,6 +386,172 @@ let rec check_expr_impl env e expected_typ_opt =
           if not (is_printable arg_t) then
             raise (TypeError "print/println argument must be printable");
           TBase TUnit, env_next
+        ) else if resolved_path = ["std"; "io"; "read_line"] then (
+          if List.length args <> 0 then raise (TypeError "std::io::read_line expects 0 arguments");
+          TBase TStr, env
+        ) else if resolved_path = ["std"; "fs"; "read_file"] then (
+          if List.length args <> 1 then raise (TypeError "std::fs::read_file expects 1 argument (path: str)");
+          let t_path, env_next = check_expr env (List.hd args) None in
+          if t_path <> TBase TStr then raise (TypeError "std::fs::read_file path must be a string");
+          TBase TStr, env_next
+        ) else if resolved_path = ["std"; "fs"; "write_file"] then (
+          if List.length args <> 2 then raise (TypeError "std::fs::write_file expects 2 arguments (path: str, content: str)");
+          let t_path, env1 = check_expr env (List.hd args) None in
+          let t_content, env2 = check_expr env1 (List.nth args 1) None in
+          if t_path <> TBase TStr || t_content <> TBase TStr then raise (TypeError "std::fs::write_file arguments must be strings");
+          TBase TBool, env2
+        ) else if resolved_path = ["std"; "fs"; "file_exists"] then (
+          if List.length args <> 1 then raise (TypeError "std::fs::file_exists expects 1 argument (path: str)");
+          let t_path, env_next = check_expr env (List.hd args) None in
+          if t_path <> TBase TStr then raise (TypeError "std::fs::file_exists path must be a string");
+          TBase TBool, env_next
+        ) else if resolved_path = ["std"; "process"; "exit"] then (
+          if List.length args <> 1 then raise (TypeError "std::process::exit expects 1 argument (code: int)");
+          let t_code, env_next = check_expr env (List.hd args) None in
+          if not (is_int_type t_code) then raise (TypeError "std::process::exit code must be an integer");
+          TBase TUnit, env_next
+        ) else if resolved_path = ["std"; "process"; "sleep"] then (
+          if List.length args <> 1 then raise (TypeError "std::process::sleep expects 1 argument (ms: int)");
+          let t_ms, env_next = check_expr env (List.hd args) None in
+          if not (is_int_type t_ms) then raise (TypeError "std::process::sleep duration must be an integer");
+          TBase TUnit, env_next
+        ) else if resolved_path = ["std"; "time"; "now_ms"] then (
+          if List.length args <> 0 then raise (TypeError "std::time::now_ms expects 0 arguments");
+          TBase TU64, env
+        ) else if resolved_path = ["std"; "process"; "args"] then (
+          if List.length args <> 0 then raise (TypeError "std::process::args expects 0 arguments");
+          TArray (TBase TStr), env
+        ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "string" then (
+          let fn_name = List.nth resolved_path 2 in
+          match fn_name with
+          | "len" ->
+              if List.length args <> 1 then raise (TypeError "std::string::len expects 1 argument");
+              let t, env1 = check_expr env (List.hd args) None in
+              if unwrap_role t <> TBase TStr then raise (TypeError "std::string::len argument must be a string");
+              TBase TI64, env1
+          | "concat" | "starts_with" | "ends_with" ->
+              if List.length args <> 2 then raise (TypeError ("std::string::" ^ fn_name ^ " expects 2 arguments"));
+              let t1, env1 = check_expr env (List.hd args) None in
+              let t2, env2 = check_expr env1 (List.nth args 1) None in
+              if unwrap_role t1 <> TBase TStr || unwrap_role t2 <> TBase TStr then raise (TypeError ("std::string::" ^ fn_name ^ " arguments must be strings"));
+              (if fn_name = "concat" then TBase TStr else TBase TBool), env2
+          | "to_uppercase" | "to_lowercase" | "trim" ->
+              if List.length args <> 1 then raise (TypeError ("std::string::" ^ fn_name ^ " expects 1 argument"));
+              let t, env1 = check_expr env (List.hd args) None in
+              if unwrap_role t <> TBase TStr then raise (TypeError ("std::string::" ^ fn_name ^ " argument must be a string"));
+              TBase TStr, env1
+          | "replace" ->
+              if List.length args <> 3 then raise (TypeError "std::string::replace expects 3 arguments");
+              let t1, env1 = check_expr env (List.hd args) None in
+              let t2, env2 = check_expr env1 (List.nth args 1) None in
+              let t3, env3 = check_expr env2 (List.nth args 2) None in
+              if unwrap_role t1 <> TBase TStr || unwrap_role t2 <> TBase TStr || unwrap_role t3 <> TBase TStr then
+                raise (TypeError "std::string::replace arguments must be strings");
+              TBase TStr, env3
+          | "substring" ->
+              if List.length args <> 3 then raise (TypeError "std::string::substring expects 3 arguments");
+              let t1, env1 = check_expr env (List.hd args) None in
+              let t2, env2 = check_expr env1 (List.nth args 1) None in
+              let t3, env3 = check_expr env2 (List.nth args 2) None in
+              if unwrap_role t1 <> TBase TStr || not (is_int_type t2) || not (is_int_type t3) then
+                raise (TypeError "std::string::substring requires (str, int, int)");
+              TBase TStr, env3
+          | "char_at" ->
+              if List.length args <> 2 then raise (TypeError "std::string::char_at expects 2 arguments");
+              let t1, env1 = check_expr env (List.hd args) None in
+              let t2, env2 = check_expr env1 (List.nth args 1) None in
+              if unwrap_role t1 <> TBase TStr || not (is_int_type t2) then
+                raise (TypeError "std::string::char_at requires (str, int)");
+              TBase TStr, env2
+          | "split" ->
+              if List.length args <> 2 then raise (TypeError "std::string::split expects 2 arguments");
+              let t1, env1 = check_expr env (List.hd args) None in
+              let t2, env2 = check_expr env1 (List.nth args 1) None in
+              if unwrap_role t1 <> TBase TStr || unwrap_role t2 <> TBase TStr then
+                raise (TypeError "std::string::split arguments must be strings");
+              TArray (TBase TStr), env2
+          | _ -> raise (TypeError ("Undefined std::string function: " ^ fn_name))
+        ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "conv" then (
+          let fn_name = List.nth resolved_path 2 in
+          match fn_name with
+          | "parse_int" ->
+              if List.length args <> 1 then raise (TypeError "std::conv::parse_int expects 1 argument");
+              let t, env1 = check_expr env (List.hd args) None in
+              if unwrap_role t <> TBase TStr then raise (TypeError "std::conv::parse_int argument must be a string");
+              TResult (TBase TI64, TBase TStr), env1
+          | "parse_bool" ->
+              if List.length args <> 1 then raise (TypeError "std::conv::parse_bool expects 1 argument");
+              let t, env1 = check_expr env (List.hd args) None in
+              if unwrap_role t <> TBase TStr then raise (TypeError "std::conv::parse_bool argument must be a string");
+              TResult (TBase TBool, TBase TStr), env1
+          | "to_str" ->
+              if List.length args <> 1 then raise (TypeError "std::conv::to_str expects 1 argument");
+              let t, env1 = check_expr env (List.hd args) None in
+              if not (is_printable t) then raise (TypeError "std::conv::to_str argument must be printable");
+              TBase TStr, env1
+          | _ -> raise (TypeError ("Undefined std::conv function: " ^ fn_name))
+        ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "collections" then (
+          let fn_name = List.nth resolved_path 2 in
+          match fn_name with
+          | "len" | "pop" | "reverse" ->
+              if List.length args <> 1 then raise (TypeError ("std::collections::" ^ fn_name ^ " expects 1 argument"));
+              let t, env1 = check_expr env (List.hd args) None in
+              (match unwrap_role t with
+              | TArray _ ->
+                  if fn_name = "len" then
+                    let env_live = match List.hd args with
+                      | EVar name -> (match StringMap.find_opt name env1.vars with Some (vt, mut, _) -> { env1 with vars = StringMap.add name (vt, mut, Live) env1.vars } | None -> env1)
+                      | _ -> env1
+                    in
+                    TBase TI64, env_live
+                  else t, env1
+              | _ -> raise (TypeError ("std::collections::" ^ fn_name ^ " argument must be an array")))
+          | "push" ->
+              if List.length args <> 2 then raise (TypeError "std::collections::push expects 2 arguments");
+              let t_arr, env1 = check_expr env (List.hd args) None in
+              (match unwrap_role t_arr with
+              | TArray elem_t ->
+                  let t_elem, env2 = check_expr env1 (List.nth args 1) (Some elem_t) in
+                  if not (types_compatible elem_t t_elem) then raise (TypeError "Type mismatch in std::collections::push");
+                  t_arr, env2
+              | _ -> raise (TypeError "std::collections::push first argument must be an array"))
+          | "contains" ->
+              if List.length args <> 2 then raise (TypeError "std::collections::contains expects 2 arguments");
+              let t_arr, env1 = check_expr env (List.hd args) None in
+              (match unwrap_role t_arr with
+              | TArray elem_t ->
+                  let t_elem, env2 = check_expr env1 (List.nth args 1) (Some elem_t) in
+                  if not (types_compatible elem_t t_elem) then raise (TypeError "Type mismatch in std::collections::contains");
+                  let env_live = match List.hd args with
+                    | EVar name -> (match StringMap.find_opt name env2.vars with Some (vt, mut, _) -> { env2 with vars = StringMap.add name (vt, mut, Live) env2.vars } | None -> env2)
+                    | _ -> env2
+                  in
+                  TBase TBool, env_live
+              | _ -> raise (TypeError "std::collections::contains first argument must be an array"))
+          | _ -> raise (TypeError ("Undefined std::collections function: " ^ fn_name))
+        ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "math" then (
+          let fn_name = List.nth resolved_path 2 in
+          match fn_name with
+          | "abs" | "sin" | "cos" | "tan" | "sqrt" | "log" ->
+              if List.length args <> 1 then raise (TypeError ("std::math::" ^ fn_name ^ " expects 1 argument"));
+              let t_arg, env_next = check_expr env (List.hd args) None in
+              if not (is_int_type t_arg) then raise (TypeError ("std::math::" ^ fn_name ^ " argument must be numeric"));
+              TI64 |> fun b -> TBase b, env_next
+          | "min" | "max" | "pow" ->
+              if List.length args <> 2 then raise (TypeError ("std::math::" ^ fn_name ^ " expects 2 arguments"));
+              let t1, env1 = check_expr env (List.hd args) None in
+              let t2, env2 = check_expr env1 (List.nth args 1) None in
+              if not (is_int_type t1) || not (is_int_type t2) then raise (TypeError ("std::math::" ^ fn_name ^ " arguments must be numeric"));
+              TI64 |> fun b -> TBase b, env2
+          | "clamp" ->
+              if List.length args <> 3 then raise (TypeError "std::math::clamp expects 3 arguments");
+              let t1, env1 = check_expr env (List.hd args) None in
+              let t2, env2 = check_expr env1 (List.nth args 1) None in
+              let t3, env3 = check_expr env2 (List.nth args 2) None in
+              if not (is_int_type t1) || not (is_int_type t2) || not (is_int_type t3) then
+                raise (TypeError "std::math::clamp arguments must be numeric");
+              TBase TI64, env3
+          | _ -> raise (TypeError ("Undefined std::math function: " ^ fn_name))
         ) else if resolved_path = ["std"; "hw"; "bind_interrupt"] then (
           if List.length args <> 2 then raise (TypeError ("bind_interrupt expects 2 arguments"));
           let t_irq, env_next = check_expr env (List.hd args) None in
@@ -441,11 +626,27 @@ let rec check_expr_impl env e expected_typ_opt =
       ) else
         TBase TStr, env
   | EOk (e, _) ->
-      let t, env1 = check_expr env e None in
-      TResult (t, TBase (TCustom "_")), env1
+      let expected_ok = match expected_typ_opt with
+        | Some (TResult (t_ok, _)) -> Some t_ok
+        | _ -> None
+      in
+      let t, env1 = check_expr env e expected_ok in
+      let err_t = match expected_typ_opt with
+        | Some (TResult (_, t_err)) -> t_err
+        | _ -> TBase (TCustom "_")
+      in
+      TResult (t, err_t), env1
   | EErr (e, _) ->
-      let t, env1 = check_expr env e None in
-      TResult (TBase (TCustom "_"), t), env1
+      let expected_err = match expected_typ_opt with
+        | Some (TResult (_, t_err)) -> Some t_err
+        | _ -> None
+      in
+      let t, env1 = check_expr env e expected_err in
+      let ok_t = match expected_typ_opt with
+        | Some (TResult (t_ok, _)) -> t_ok
+        | _ -> TBase (TCustom "_")
+      in
+      TResult (ok_t, t), env1
   | EIf (cond, thn, els) ->
       let t_cond, env1 = check_expr env cond (Some (TBase TBool)) in
       if not (is_bool_type t_cond) then raise (TypeError "if condition must be bool");
@@ -510,21 +711,28 @@ let rec check_expr_impl env e expected_typ_opt =
           | None -> raise (TypeError ("Undeclared struct: " ^ name))))
   | EField (e, field_name) ->
       let t_e, env1 = check_expr env e None in
+      let env_res = match e with
+        | EVar name ->
+            (match StringMap.find_opt name env1.vars with
+             | Some (vt, mut, _) -> { env1 with vars = StringMap.add name (vt, mut, Live) env1.vars }
+             | None -> env1)
+        | _ -> env1
+      in
       let base = match t_e with TRole (inner, _) -> inner | _ -> t_e in
       (match base with
       | TBase (TGenericApp (targs, TCustom name)) ->
-          (match StringMap.find_opt name env1.generic_items with
+          (match StringMap.find_opt name env_res.generic_items with
           | Some (params, IStruct s_decl) ->
               let subst = List.fold_left2 (fun acc p t -> StringMap.add p t acc) StringMap.empty params targs in
               (match List.find_opt (fun (f : Ast.field) -> f.name = field_name) s_decl.fields with
-              | Some f_decl -> substitute_typ subst f_decl.typ, env1
+              | Some f_decl -> substitute_typ subst f_decl.typ, env_res
               | None -> raise (TypeError ("Unknown field " ^ field_name ^ " on struct " ^ name)))
           | _ -> raise (TypeError ("Unknown generic struct: " ^ name)))
       | TBase (TCustom name) ->
-          (match StringMap.find_opt name env1.structs with
+          (match StringMap.find_opt name env_res.structs with
           | Some s_decl ->
               (match List.find_opt (fun (f : Ast.field) -> f.name = field_name) s_decl.fields with
-              | Some f_decl -> f_decl.typ, env1
+              | Some f_decl -> f_decl.typ, env_res
               | None -> raise (TypeError ("Unknown field " ^ field_name ^ " on struct " ^ name)))
           | None -> raise (TypeError ("Unknown struct: " ^ name)))
       | _ -> raise (TypeError "Field access on non-struct type"))
@@ -709,14 +917,16 @@ and check_stmt env stmt =
           | TArray t_elem ->
               let t_e, env_final = check_expr env_i e (Some t_elem) in
               if not (types_compatible t_elem t_e) then raise (TypeError "Array assignment type mismatch");
-              (match arr with
-              | EVar name ->
-                  (match StringMap.find_opt name env_final.vars with
-                  | Some (_, is_mut, _) ->
-                      if not is_mut then raise (TypeError ("Cannot mutate immutable array: " ^ name))
-                  | None -> ())
-              | _ -> ());
-              env_final
+              let env_res = match arr with
+                | EVar name ->
+                    (match StringMap.find_opt name env_final.vars with
+                    | Some (_, is_mut, _) ->
+                        if not is_mut then raise (TypeError ("Cannot mutate immutable array: " ^ name));
+                        { env_final with vars = StringMap.add name (t_arr, true, Live) env_final.vars }
+                    | None -> env_final)
+                | _ -> env_final
+              in
+              env_res
           | _ -> raise (TypeError "Cannot index assign non-array type"))
       | _ -> raise (TypeError "Invalid left-hand side in assignment"))
   | SExpr e ->
@@ -745,7 +955,7 @@ and check_stmt env stmt =
       in
       StringMap.iter (fun name (t, _, state) ->
         match t with
-        | TRole _ when state = Live -> 
+        | TRole _ when state = Live && not (is_copy_type t) -> 
             raise (TypeError ("Cannot return early with unconsumed linear resource: " ^ name))
         | _ -> ()
       ) env1.vars;
@@ -775,7 +985,7 @@ let check_fn_decl env (fn: Ast.fn_decl) =
        let env_final, _ = check_block local_env b in
        StringMap.iter (fun name (t, _, state) ->
          match t with
-         | TRole _ when state = Live -> 
+         | TRole _ when state = Live && not (is_copy_type t) -> 
              raise (TypeError ("Function " ^ fn.name ^ " ends with unconsumed linear resource: " ^ name))
          | _ -> ()
        ) env_final.vars
@@ -785,7 +995,7 @@ let check_fn_decl env (fn: Ast.fn_decl) =
 let rec eval_const (env_iota: Int64.t option) (e: Ast.expr) : Int64.t =
   match e with
   | ELit (LInt (v, _)) -> v
-  | EVar "iota" -> 
+  | EVar "iota" | EPathVar ["iota"] -> 
       (match env_iota with
       | Some v -> v
       | None -> raise (TypeError "iota is only available inside enum declarations"))

@@ -1,7 +1,7 @@
 (library
  (name wyzer_lib)
  (public_name wyzer.lib)
- (libraries ppx_deriving.std unix llvm llvm.analysis)
+ (libraries ppx_deriving.std unix)
  (preprocess (pps ppx_deriving.std)))
 
 (menhir

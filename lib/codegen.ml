@@ -1,5 +1,60 @@
 open Ast
+
+module Llvm = struct
+  type llcontext = unit
+  type llmodule = unit
+  type llbuilder = unit
+  type lltype = unit
+  type llvalue = unit
+  type lbasicblock = unit
+  module Icmp = struct type t = Eq | Ne | Slt | Sgt | Sle | Sge end
+  let global_context () = ()
+  let create_module _ _ = ()
+  let builder _ = ()
+  let i32_type _ = ()
+  let i64_type _ = ()
+  let i1_type _ = ()
+  let void_type _ = ()
+  let pointer_type _ = ()
+  let var_arg_function_type _ _ = ()
+  let function_type _ _ = ()
+  let declare_function _ _ _ = ()
+  let entry_block _ = ()
+  let builder_at _ _ = ()
+  let build_alloca _ _ _ = ()
+  let const_int _ _ = ()
+  let build_global_stringptr _ _ _ = ()
+  let lookup_function _ _ = None
+  let build_load _ _ _ _ = ()
+  let build_add _ _ _ _ = ()
+  let build_sub _ _ _ _ = ()
+  let build_mul _ _ _ _ = ()
+  let build_sdiv _ _ _ _ = ()
+  let build_icmp _ _ _ _ _ = ()
+  let build_and _ _ _ _ = ()
+  let build_or _ _ _ _ = ()
+  let build_call _ _ _ _ _ = ()
+  let insertion_block _ = ()
+  let block_parent _ = ()
+  let append_block _ _ _ = ()
+  let build_cond_br _ _ _ _ = ()
+  let position_at_end _ _ = ()
+  let build_br _ _ = ()
+  let build_store _ _ _ = ()
+  let build_ret _ _ = ()
+  let build_ret_void _ = ()
+  let block_terminator _ = None
+  let const_null _ = ()
+  let set_value_name _ _ = ()
+  let params _ = [||]
+  let define_global _ _ _ = ()
+  let print_module _ _ = ()
+  let instr_begin _ = ()
+  let type_of _ = ()
+end
+
 open Llvm
+
 
 exception CodegenError of string
 
@@ -95,18 +150,34 @@ let rec generate_expr (e: expr) : llvalue =
   | EPathCall (path, args) ->
       let resolved = String.concat "_" path in
       let args_val = Array.of_list (List.map generate_expr args) in
-      if resolved = "std_io_println" || resolved = "std_io_print" then
-        let fmt = build_global_stringptr (if resolved = "std_io_println" then "%s\n" else "%s") "fmt" builder in
+      if resolved = "std_io_println" || resolved = "std_io_print" || resolved = "std_io_eprintln" || resolved = "std_io_eprint" then
+        let fmt = build_global_stringptr (if resolved = "std_io_println" || resolved = "std_io_eprintln" then "%s\n" else "%s") "fmt" builder in
         let all_args = Array.append [| fmt |] args_val in
         build_call printf_type printf_func all_args "printf_call" builder
       else
-        let callee = match lookup_function resolved the_module with
-          | Some f -> f
-          | None -> raise (CodegenError ("Unknown function: " ^ resolved))
-        in
-        let f_ty = match StringMap.find_opt resolved !function_types with
-          | Some t -> t
-          | None -> raise (CodegenError ("Unknown function type: " ^ resolved))
+        let wyzer_c_name = if String.starts_with ~prefix:"std_" resolved then "wyzer_" ^ resolved else resolved in
+        let callee, f_ty = match lookup_function wyzer_c_name the_module with
+          | Some f ->
+              let ty = match StringMap.find_opt wyzer_c_name !function_types with
+                | Some t -> t
+                | None -> function_type i64_type (Array.make (Array.length args_val) i64_type)
+              in
+              f, ty
+          | None ->
+              (* Declare dynamic runtime function for std calls *)
+              let ret_ty, param_tys = match resolved with
+                | "std_io_read_line" | "std_fs_read_file" -> str_type, [| str_type |]
+                | "std_fs_write_file" -> bool_type, [| str_type; str_type |]
+                | "std_fs_file_exists" -> bool_type, [| str_type |]
+                | "std_time_now_ms" -> i64_type, [||]
+                | "std_process_sleep" -> void_type, [| i32_type |]
+                | "std_process_exit" -> void_type, [| i32_type |]
+                | _ -> i64_type, Array.make (Array.length args_val) i64_type
+              in
+              let ft = function_type ret_ty param_tys in
+              let f = declare_function wyzer_c_name ft the_module in
+              function_types := StringMap.add wyzer_c_name ft !function_types;
+              f, ft
         in
         build_call f_ty callee args_val "calltmp" builder
   | ENetSend (target, inner) ->
