@@ -45,6 +45,11 @@ let empty_env = {
 
 exception TypeError of string
 
+let rec unwrap_role = function
+  | TRole (t, _) -> unwrap_role t
+  | t -> t
+
+
 let rec add_role_if_missing t r =
   match t with
   | TRole _ -> t
@@ -384,6 +389,173 @@ let rec check_expr_impl env e expected_typ_opt =
                     TBase TUnit, env_next
                 | None -> raise (TypeError ("Interrupt handler must be a function: " ^ name)))
            | _ -> raise (TypeError "Interrupt handler must be a function reference by name"))
+
+        (* === std::conv — Type Conversions === *)
+        ) else if resolved_path = ["std"; "conv"; "to_str"] then (
+          if List.length args <> 1 then raise (TypeError "std::conv::to_str expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          if not (is_printable arg_t) then
+            raise (TypeError "std::conv::to_str argument must be a printable type");
+          TBase TStr, env_next
+        ) else if resolved_path = ["std"; "conv"; "parse_int"] then (
+          if List.length args <> 1 then raise (TypeError "std::conv::parse_int expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          if not (is_str_type arg_t) then raise (TypeError "std::conv::parse_int expects a str argument");
+          TResult (TBase TU64, TBase TStr), env_next
+        ) else if resolved_path = ["std"; "conv"; "parse_bool"] then (
+          if List.length args <> 1 then raise (TypeError "std::conv::parse_bool expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          if not (is_str_type arg_t) then raise (TypeError "std::conv::parse_bool expects a str argument");
+          TResult (TBase TBool, TBase TStr), env_next
+
+        (* === std::str — String Operations === *)
+        ) else if resolved_path = ["std"; "string"; "len"] then (
+          if List.length args <> 1 then raise (TypeError "std::string::len expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          if not (is_str_type arg_t) then raise (TypeError "std::string::len expects a str argument");
+          TBase TU64, env_next
+        ) else if resolved_path = ["std"; "string"; "concat"] then (
+          if List.length args <> 2 then raise (TypeError "std::string::concat expects 2 arguments");
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          if not (is_str_type t1 && is_str_type t2) then
+            raise (TypeError "std::string::concat expects two str arguments");
+          TBase TStr, env2
+        ) else if resolved_path = ["std"; "string"; "contains"]
+              || resolved_path = ["std"; "string"; "starts_with"]
+              || resolved_path = ["std"; "string"; "ends_with"] then (
+          let fname = List.nth resolved_path 2 in
+          if List.length args <> 2 then raise (TypeError ("std::string::" ^ fname ^ " expects 2 arguments"));
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          if not (is_str_type t1 && is_str_type t2) then
+            raise (TypeError ("std::string::" ^ fname ^ " expects two str arguments"));
+          TBase TBool, env2
+        ) else if resolved_path = ["std"; "string"; "to_upper"]
+              || resolved_path = ["std"; "string"; "to_lower"]
+              || resolved_path = ["std"; "string"; "trim"] then (
+          let fname = List.nth resolved_path 2 in
+          if List.length args <> 1 then raise (TypeError ("std::string::" ^ fname ^ " expects 1 argument"));
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          if not (is_str_type arg_t) then raise (TypeError ("std::string::" ^ fname ^ " expects a str argument"));
+          TBase TStr, env_next
+        ) else if resolved_path = ["std"; "string"; "replace"] then (
+          if List.length args <> 3 then raise (TypeError "std::string::replace expects 3 arguments");
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          let t3, env3 = check_expr env2 (List.nth args 2) None in
+          if not (is_str_type t1 && is_str_type t2 && is_str_type t3) then
+            raise (TypeError "std::string::replace expects three str arguments");
+          TBase TStr, env3
+        ) else if resolved_path = ["std"; "string"; "substr"] then (
+          if List.length args <> 3 then raise (TypeError "std::string::substr expects 3 arguments (str, start, len)");
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          let t3, env3 = check_expr env2 (List.nth args 2) None in
+          if not (is_str_type t1) then raise (TypeError "std::string::substr first argument must be str");
+          if not (is_int_type t2 && is_int_type t3) then raise (TypeError "std::string::substr start and len must be integers");
+          TBase TStr, env3
+        ) else if resolved_path = ["std"; "string"; "char_at"] then (
+          if List.length args <> 2 then raise (TypeError "std::string::char_at expects 2 arguments (str, index)");
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          if not (is_str_type t1) then raise (TypeError "std::string::char_at first argument must be str");
+          if not (is_int_type t2) then raise (TypeError "std::string::char_at index must be an integer");
+          TBase TStr, env2
+        ) else if resolved_path = ["std"; "string"; "split"] then (
+          if List.length args <> 2 then raise (TypeError "std::string::split expects 2 arguments (str, delimiter)");
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          if not (is_str_type t1 && is_str_type t2) then
+            raise (TypeError "std::string::split expects two str arguments");
+          TArray (TBase TStr), env2
+
+        (* === std::math — Numeric Operations === *)
+        ) else if resolved_path = ["std"; "math"; "abs"] then (
+          if List.length args <> 1 then raise (TypeError "std::math::abs expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          if not (is_int_type arg_t) then raise (TypeError "std::math::abs expects an integer argument");
+          TBase TI64, env_next
+        ) else if resolved_path = ["std"; "math"; "min"]
+              || resolved_path = ["std"; "math"; "max"] then (
+          let fname = List.nth resolved_path 2 in
+          if List.length args <> 2 then raise (TypeError ("std::math::" ^ fname ^ " expects 2 arguments"));
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          if not (is_int_type t1 && is_int_type t2) then
+            raise (TypeError ("std::math::" ^ fname ^ " expects two integer arguments"));
+          TBase TI64, env2
+        ) else if resolved_path = ["std"; "math"; "pow"] then (
+          if List.length args <> 2 then raise (TypeError "std::math::pow expects 2 arguments (base, exp)");
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          if not (is_int_type t1 && is_int_type t2) then
+            raise (TypeError "std::math::pow expects two integer arguments");
+          TBase TU64, env2
+        ) else if resolved_path = ["std"; "math"; "sqrt"] then (
+          if List.length args <> 1 then raise (TypeError "std::math::sqrt expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          if not (is_int_type arg_t) then raise (TypeError "std::math::sqrt expects an integer argument");
+          TBase TU64, env_next
+        ) else if resolved_path = ["std"; "math"; "clamp"] then (
+          if List.length args <> 3 then raise (TypeError "std::math::clamp expects 3 arguments (val, lo, hi)");
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          let t3, env3 = check_expr env2 (List.nth args 2) None in
+          if not (is_int_type t1 && is_int_type t2 && is_int_type t3) then
+            raise (TypeError "std::math::clamp expects three integer arguments");
+          TBase TI64, env3
+
+        (* === std::collections — Array/Collection Utilities === *)
+        ) else if resolved_path = ["std"; "collections"; "len"] then (
+          if List.length args <> 1 then raise (TypeError "std::collections::len expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          (match unwrap_role arg_t with
+           | TArray _ -> TBase TU64, env_next
+           | _ -> raise (TypeError "std::collections::len expects an array argument"))
+        ) else if resolved_path = ["std"; "collections"; "push"] then (
+          if List.length args <> 2 then raise (TypeError "std::collections::push expects 2 arguments (array, value)");
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          (match unwrap_role t1 with
+           | TArray elem_t ->
+               if not (types_compatible elem_t t2) then
+                 raise (TypeError "std::collections::push value type does not match array element type");
+               TArray elem_t, env2
+           | _ -> raise (TypeError "std::collections::push first argument must be an array"))
+        ) else if resolved_path = ["std"; "collections"; "pop"] then (
+          if List.length args <> 1 then raise (TypeError "std::collections::pop expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          (match unwrap_role arg_t with
+           | TArray _ -> arg_t, env_next
+           | _ -> raise (TypeError "std::collections::pop expects an array argument"))
+        ) else if resolved_path = ["std"; "collections"; "reverse"] then (
+          if List.length args <> 1 then raise (TypeError "std::collections::reverse expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          (match unwrap_role arg_t with
+           | TArray _ -> arg_t, env_next
+           | _ -> raise (TypeError "std::collections::reverse expects an array argument"))
+        ) else if resolved_path = ["std"; "collections"; "contains"] then (
+          if List.length args <> 2 then raise (TypeError "std::collections::contains expects 2 arguments (array, value)");
+          let t1, env1 = check_expr env (List.hd args) None in
+          let t2, env2 = check_expr env1 (List.nth args 1) None in
+          (match unwrap_role t1 with
+           | TArray elem_t ->
+               if not (types_compatible elem_t t2) then
+                 raise (TypeError "std::collections::contains value type does not match array element type");
+               TBase TBool, env2
+           | _ -> raise (TypeError "std::collections::contains first argument must be an array"))
+
+        (* === std::process — Process Control === *)
+        ) else if resolved_path = ["std"; "process"; "exit"] then (
+          if List.length args <> 1 then raise (TypeError "std::process::exit expects 1 argument");
+          let arg_t, env_next = check_expr env (List.hd args) None in
+          if not (is_int_type arg_t) then raise (TypeError "std::process::exit expects an integer exit code");
+          TBase TUnit, env_next
+        ) else if resolved_path = ["std"; "process"; "args"] then (
+          if List.length args <> 0 then raise (TypeError "std::process::args expects 0 arguments");
+          TArray (TBase TStr), env
+
         ) else
           raise (TypeError ("Undefined std path call: " ^ String.concat "::" resolved_path))
       ) else (

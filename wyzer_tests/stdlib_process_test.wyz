@@ -1,0 +1,7 @@
+// Test std::process module
+
+fn main() {
+    // Test std::process::args — prints all command line arguments
+    let argv = std::process::args();
+    std::io::println(std::collections::len(argv));
+}

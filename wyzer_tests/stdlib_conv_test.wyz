@@ -1,0 +1,36 @@
+// Test std::conv module
+
+fn main() {
+    // Test std::conv::to_str
+    let num_str = std::conv::to_str(42);
+    std::io::println(num_str);
+    
+    let bool_str = std::conv::to_str(true);
+    std::io::println(bool_str);
+
+    // Test std::conv::parse_int
+    let parsed = std::conv::parse_int("123");
+    match parsed {
+        Ok(v) => std::io::println(v),
+        Err(e) => std::io::println(e)
+    };
+
+    let bad_parse = std::conv::parse_int("abc");
+    match bad_parse {
+        Ok(v) => std::io::println(v),
+        Err(e) => std::io::println(e)
+    };
+
+    // Test std::conv::parse_bool
+    let parsed_bool = std::conv::parse_bool("true");
+    match parsed_bool {
+        Ok(v) => std::io::println(v),
+        Err(e) => std::io::println(e)
+    };
+
+    let bad_bool = std::conv::parse_bool("yes");
+    match bad_bool {
+        Ok(v) => std::io::println(v),
+        Err(e) => std::io::println(e)
+    };
+}

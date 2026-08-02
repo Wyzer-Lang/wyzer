@@ -1,0 +1,28 @@
+// Test std::math module
+
+fn main() {
+    // Test std::math::abs
+    std::io::println(std::math::abs(-42));
+    std::io::println(std::math::abs(42));
+
+    // Test std::math::min
+    std::io::println(std::math::min(10, 20));
+    std::io::println(std::math::min(20, 10));
+
+    // Test std::math::max
+    std::io::println(std::math::max(10, 20));
+    std::io::println(std::math::max(20, 10));
+
+    // Test std::math::pow
+    std::io::println(std::math::pow(2, 10));
+    std::io::println(std::math::pow(3, 3));
+
+    // Test std::math::sqrt
+    std::io::println(std::math::sqrt(144));
+    std::io::println(std::math::sqrt(100));
+
+    // Test std::math::clamp
+    std::io::println(std::math::clamp(5, 0, 10));
+    std::io::println(std::math::clamp(-5, 0, 10));
+    std::io::println(std::math::clamp(15, 0, 10));
+}

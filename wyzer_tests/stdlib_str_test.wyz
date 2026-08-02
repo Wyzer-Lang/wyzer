@@ -1,0 +1,43 @@
+// Test std::string module
+
+fn main() {
+    // Test std::string::len
+    let s = "Hello, Wyzer!";
+    let length = std::string::len(s);
+    std::io::println(length);
+
+    // Test std::string::concat
+    let greeting = std::string::concat("Hello", " World");
+    std::io::println(greeting);
+
+    // Test std::string::contains
+    std::io::println(std::string::contains("Hello World", "World"));
+    std::io::println(std::string::contains("Hello World", "xyz"));
+
+    // Test std::string::starts_with
+    std::io::println(std::string::starts_with("Hello World", "Hello"));
+    std::io::println(std::string::starts_with("Hello World", "World"));
+
+    // Test std::string::ends_with
+    std::io::println(std::string::ends_with("Hello World", "World"));
+    std::io::println(std::string::ends_with("Hello World", "Hello"));
+
+    // Test std::string::to_upper
+    std::io::println(std::string::to_upper("hello"));
+
+    // Test std::string::to_lower
+    std::io::println(std::string::to_lower("HELLO"));
+
+    // Test std::string::trim
+    std::io::println(std::string::trim("  hello  "));
+
+    // Test std::string::replace
+    std::io::println(std::string::replace("Hello World", "World", "Wyzer"));
+
+    // Test std::string::substr
+    std::io::println(std::string::substr("Hello World", 6, 5));
+
+    // Test std::string::char_at
+    std::io::println(std::string::char_at("Hello", 0));
+    std::io::println(std::string::char_at("Hello", 4));
+}

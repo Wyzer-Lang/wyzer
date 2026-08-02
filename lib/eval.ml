@@ -174,6 +174,232 @@ let rec eval_expr env e =
           in
           print_endline ("[Hardware] Bound IRQ " ^ show_value irq_val ^ " to " ^ handler_name);
           VUnit
+
+        (* === std::conv — Type Conversions === *)
+        ) else if resolved_path = ["std"; "conv"; "to_str"] then (
+          let arg = eval_expr env (List.hd args) in
+          let buf = Buffer.create 64 in
+          let fmt = Format.formatter_of_buffer buf in
+          (match arg with
+           | VInt i -> Format.fprintf fmt "%Ld" i
+           | VBool b -> Format.fprintf fmt "%b" b
+           | VStr s -> Format.fprintf fmt "%s" s
+           | VUnit -> Format.fprintf fmt "()"
+           | VArray _ -> Format.fprintf fmt "[...]"
+           | VPtr _ -> Format.fprintf fmt "<ptr>"
+           | VFormatStr _ -> Format.fprintf fmt "<fstr>");
+          Format.pp_print_flush fmt ();
+          VStr (Buffer.contents buf)
+        ) else if resolved_path = ["std"; "conv"; "parse_int"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VStr s ->
+              (try
+                let n = Int64.of_string (String.trim s) in
+                let ptr = alloc_heap (HOk (VInt n)) in VPtr ptr
+              with _ ->
+                let ptr = alloc_heap (HErr (VStr ("Cannot parse '" ^ s ^ "' as integer"))) in VPtr ptr)
+          | _ -> raise (EvalError "std::conv::parse_int expects a string")
+        ) else if resolved_path = ["std"; "conv"; "parse_bool"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VStr s ->
+              let trimmed = String.trim s in
+              if trimmed = "true" then
+                let ptr = alloc_heap (HOk (VBool true)) in VPtr ptr
+              else if trimmed = "false" then
+                let ptr = alloc_heap (HOk (VBool false)) in VPtr ptr
+              else
+                let ptr = alloc_heap (HErr (VStr ("Cannot parse '" ^ s ^ "' as bool"))) in VPtr ptr
+          | _ -> raise (EvalError "std::conv::parse_bool expects a string")
+
+        (* === std::str — String Operations === *)
+        ) else if resolved_path = ["std"; "string"; "len"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VStr s -> VInt (Int64.of_int (String.length s))
+          | _ -> raise (EvalError "std::string::len expects a string")
+        ) else if resolved_path = ["std"; "string"; "concat"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          match a, b with
+          | VStr s1, VStr s2 -> VStr (s1 ^ s2)
+          | _ -> raise (EvalError "std::string::concat expects two strings")
+        ) else if resolved_path = ["std"; "string"; "contains"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          match a, b with
+          | VStr haystack, VStr needle ->
+              let found = try let _ = Str.search_forward (Str.regexp_string needle) haystack 0 in true with Not_found -> false in
+              VBool found
+          | _ -> raise (EvalError "std::string::contains expects two strings")
+        ) else if resolved_path = ["std"; "string"; "starts_with"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          match a, b with
+          | VStr s, VStr prefix ->
+              let plen = String.length prefix in
+              VBool (String.length s >= plen && String.sub s 0 plen = prefix)
+          | _ -> raise (EvalError "std::string::starts_with expects two strings")
+        ) else if resolved_path = ["std"; "string"; "ends_with"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          match a, b with
+          | VStr s, VStr suffix ->
+              let slen = String.length s in
+              let suflen = String.length suffix in
+              VBool (slen >= suflen && String.sub s (slen - suflen) suflen = suffix)
+          | _ -> raise (EvalError "std::string::ends_with expects two strings")
+        ) else if resolved_path = ["std"; "string"; "to_upper"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VStr s -> VStr (String.uppercase_ascii s)
+          | _ -> raise (EvalError "std::string::to_upper expects a string")
+        ) else if resolved_path = ["std"; "string"; "to_lower"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VStr s -> VStr (String.lowercase_ascii s)
+          | _ -> raise (EvalError "std::string::to_lower expects a string")
+        ) else if resolved_path = ["std"; "string"; "trim"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VStr s -> VStr (String.trim s)
+          | _ -> raise (EvalError "std::string::trim expects a string")
+        ) else if resolved_path = ["std"; "string"; "replace"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          let c = eval_expr env (List.nth args 2) in
+          match a, b, c with
+          | VStr s, VStr from_s, VStr to_s ->
+              VStr (Str.global_replace (Str.regexp_string from_s) to_s s)
+          | _ -> raise (EvalError "std::string::replace expects three strings")
+        ) else if resolved_path = ["std"; "string"; "substr"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          let c = eval_expr env (List.nth args 2) in
+          match a, b, c with
+          | VStr s, VInt start, VInt len ->
+              let si = Int64.to_int start in
+              let li = Int64.to_int len in
+              let slen = String.length s in
+              if si < 0 || si > slen then VStr ""
+              else
+                let actual_len = min li (slen - si) in
+                VStr (String.sub s si actual_len)
+          | _ -> raise (EvalError "std::string::substr expects (str, int, int)")
+        ) else if resolved_path = ["std"; "string"; "char_at"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          match a, b with
+          | VStr s, VInt idx ->
+              let i = Int64.to_int idx in
+              if i < 0 || i >= String.length s then VStr ""
+              else VStr (String.make 1 (String.get s i))
+          | _ -> raise (EvalError "std::string::char_at expects (str, int)")
+        ) else if resolved_path = ["std"; "string"; "split"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          match a, b with
+          | VStr s, VStr delim ->
+              let parts = Str.split (Str.regexp_string delim) s in
+              VArray (Array.of_list (List.map (fun p -> VStr p) parts))
+          | _ -> raise (EvalError "std::string::split expects two strings")
+
+        (* === std::math — Numeric Operations === *)
+        ) else if resolved_path = ["std"; "math"; "abs"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VInt i -> VInt (Int64.abs i)
+          | _ -> raise (EvalError "std::math::abs expects an integer")
+        ) else if resolved_path = ["std"; "math"; "min"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          match a, b with
+          | VInt x, VInt y -> VInt (Int64.min x y)
+          | _ -> raise (EvalError "std::math::min expects two integers")
+        ) else if resolved_path = ["std"; "math"; "max"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          match a, b with
+          | VInt x, VInt y -> VInt (Int64.max x y)
+          | _ -> raise (EvalError "std::math::max expects two integers")
+        ) else if resolved_path = ["std"; "math"; "pow"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          match a, b with
+          | VInt base_v, VInt exp_v ->
+              let rec ipow b e acc =
+                if Int64.compare e 0L <= 0 then acc
+                else ipow b (Int64.sub e 1L) (Int64.mul acc b)
+              in
+              VInt (ipow base_v exp_v 1L)
+          | _ -> raise (EvalError "std::math::pow expects two integers")
+        ) else if resolved_path = ["std"; "math"; "sqrt"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VInt n ->
+              let f = Int64.to_float n in
+              VInt (Int64.of_float (Float.round (sqrt f)))
+          | _ -> raise (EvalError "std::math::sqrt expects an integer")
+        ) else if resolved_path = ["std"; "math"; "clamp"] then (
+          let a = eval_expr env (List.hd args) in
+          let b = eval_expr env (List.nth args 1) in
+          let c = eval_expr env (List.nth args 2) in
+          match a, b, c with
+          | VInt v, VInt lo, VInt hi ->
+              VInt (Int64.max lo (Int64.min hi v))
+          | _ -> raise (EvalError "std::math::clamp expects three integers")
+
+        (* === std::collections — Array/Collection Utilities === *)
+        ) else if resolved_path = ["std"; "collections"; "len"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VArray arr -> VInt (Int64.of_int (Array.length arr))
+          | _ -> raise (EvalError "std::collections::len expects an array")
+        ) else if resolved_path = ["std"; "collections"; "push"] then (
+          let arr_val = eval_expr env (List.hd args) in
+          let elem_val = eval_expr env (List.nth args 1) in
+          match arr_val with
+          | VArray arr -> VArray (Array.append arr [| elem_val |])
+          | _ -> raise (EvalError "std::collections::push expects an array as first argument")
+        ) else if resolved_path = ["std"; "collections"; "pop"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VArray arr ->
+              let len = Array.length arr in
+              if len = 0 then VArray [||]
+              else VArray (Array.sub arr 0 (len - 1))
+          | _ -> raise (EvalError "std::collections::pop expects an array")
+        ) else if resolved_path = ["std"; "collections"; "reverse"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VArray arr ->
+              let copy = Array.copy arr in
+              let len = Array.length copy in
+              for i = 0 to (len / 2) - 1 do
+                let tmp = copy.(i) in
+                copy.(i) <- copy.(len - 1 - i);
+                copy.(len - 1 - i) <- tmp
+              done;
+              VArray copy
+          | _ -> raise (EvalError "std::collections::reverse expects an array")
+        ) else if resolved_path = ["std"; "collections"; "contains"] then (
+          let arr_val = eval_expr env (List.hd args) in
+          let elem_val = eval_expr env (List.nth args 1) in
+          match arr_val with
+          | VArray arr -> VBool (Array.exists (fun v -> v = elem_val) arr)
+          | _ -> raise (EvalError "std::collections::contains expects an array as first argument")
+
+        (* === std::process — Process Control === *)
+        ) else if resolved_path = ["std"; "process"; "exit"] then (
+          let arg = eval_expr env (List.hd args) in
+          match arg with
+          | VInt code -> exit (Int64.to_int code)
+          | _ -> raise (EvalError "std::process::exit expects an integer")
+        ) else if resolved_path = ["std"; "process"; "args"] then (
+          let argv = Array.to_list Sys.argv in
+          VArray (Array.of_list (List.map (fun s -> VStr s) argv))
+
         ) else
           raise (EvalError ("Unknown std path call: " ^ String.concat "::" resolved_path))
       ) else (

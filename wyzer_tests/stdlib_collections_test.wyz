@@ -1,0 +1,24 @@
+// Test std::collections module
+
+fn main() {
+    let arr1 = [1, 2, 3, 4, 5];
+
+    // Test std::collections::len
+    std::io::println(std::collections::len(arr1));
+
+    // Test std::collections::push
+    let arr2 = std::collections::push([1, 2, 3, 4, 5], 6);
+    std::io::println(std::collections::len(arr2));
+
+    // Test std::collections::pop
+    let arr3 = std::collections::pop([1, 2, 3, 4, 5]);
+    std::io::println(std::collections::len(arr3));
+
+    // Test std::collections::reverse
+    let reversed = std::collections::reverse([1, 2, 3, 4, 5]);
+    std::io::println(reversed[0]);
+
+    // Test std::collections::contains
+    std::io::println(std::collections::contains([1, 2, 3, 4, 5], 3));
+    std::io::println(std::collections::contains([1, 2, 3, 4, 5], 99));
+}
