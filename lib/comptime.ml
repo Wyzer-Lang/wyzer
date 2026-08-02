@@ -7,10 +7,12 @@ let rec val_to_expr (v: value) : expr =
   | VInt i -> ELit (LInt (i, None))
   | VBool b -> ELit (LBool b)
   | VStr s -> ELit (LStr s)
+  | VChar c -> ELit (LChar c)
   | VArray arr -> EArray (Array.to_list (Array.map val_to_expr arr))
   | VFormatStr (s, pieces) ->
       let mapped = List.map (fun (v, lit) -> (val_to_expr v, lit)) pieces in
       EFormatStr (ref s, ref mapped)
+  | VTuple vals -> ETuple (List.map val_to_expr vals)
   | VPtr _ -> failwith "Returning heap-allocated structs/enums from @Compiler is not yet supported in val_to_expr"
 
 let rec transform_expr env e =
@@ -78,6 +80,7 @@ let rec transform_expr env e =
         | _ -> "unknown"
       in
       ELit (LStr (string_of_typ t))
+  | ETuple items -> ETuple (List.map (transform_expr env) items)
   | ELit _ | EVar _ | EPathVar _ -> e
 
 and transform_stmt env s =

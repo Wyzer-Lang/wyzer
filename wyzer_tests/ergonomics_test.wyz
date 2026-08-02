@@ -1,0 +1,11 @@
+fn get_value() -> u32 {
+    let x: u32 = 10u32;
+    // implicit return
+    x
+}
+
+fn main() {
+    let v: u32 = get_value();
+    let s: str = f"Value is {v}";
+    std::io::println(s);
+}

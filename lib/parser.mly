@@ -6,12 +6,13 @@ open Ast
 %token <bool> BOOL_VAL
 %token <string> STRING_VAL
 %token <string> FSTRING_VAL
+%token <char> CHAR_VAL
 %token <string> IDENT
 
 %token FN ENUM IMPORT AS IF ELSE WHILE FOR LET VAR CONST GLOBAL EXTERN IN MATCH RETURN TRANSFER RESULT OK ERR STRUCT UNDERSCORE IOTA GENERIC ROLE PUB TRAIT IMPL MOD SIZEOF TYPEOF
-%token U8 U16 U32 U64 USIZE I8 I16 I32 I64 ISIZE BOOL STR
+%token U8 U16 U32 U64 USIZE I8 I16 I32 I64 ISIZE BOOL STR CHAR
 %token PLUS MINUS STAR SLASH SHL SHR BITAND BITOR AND OR NOT
-%token EQEQ NEQ LT GT LTE GTE EQ FATARROW
+%token EQEQ NEQ LT GT LTE GTE EQ FATARROW PLUS_EQ MINUS_EQ STAR_EQ SLASH_EQ
 %token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET COMMA COLON SEMICOLON DOT COLONCOLON AT AT_EQ DOLLAR_EQ
 %token EOF
 
@@ -94,12 +95,13 @@ typ:
   | RESULT LT t1=typ COMMA t2=typ GT { TResult (t1, t2) }
   | RESULT LT t1=typ COMMA t2=typ GT AT role=IDENT { TRole (TResult (t1, t2), role) }
   | LBRACKET t=typ RBRACKET { TArray t }
+  | LPAREN t1=typ COMMA types=separated_nonempty_list(COMMA, typ) RPAREN { TTuple (t1 :: types) }
   | LBRACKET t=typ RBRACKET AT role=IDENT { TRole (TArray t, role) }
 
 base_type:
   | U8 { TU8 } | U16 { TU16 } | U32 { TU32 } | U64 { TU64 } | USIZE { TUSize }
   | I8 { TI8 } | I16 { TI16 } | I32 { TI32 } | I64 { TI64 } | ISIZE { TISize }
-  | BOOL { TBool } | STR { TStr }
+  | BOOL { TBool } | STR { TStr } | CHAR { TChar }
   | id=IDENT { TCustom id }
   | GENERIC LT args=separated_nonempty_list(COMMA, typ) GT t=base_type { TGenericApp (args, t) }
 
@@ -131,13 +133,17 @@ block_stmts:
   | s=stmt b=block_stmts { { stmts = s :: b.stmts; ret_expr = b.ret_expr } }
 
 stmt:
-  | LET name=IDENT typ=option(COLON t=typ {t}) EQ init=expr SEMICOLON
-    { SDecl { kind = VLet; name; typ; init } }
-  | VAR name=IDENT typ=option(COLON t=typ {t}) EQ init=expr SEMICOLON
-    { SDecl { kind = VVar; name; typ; init } }
-  | CONST name=IDENT typ=option(COLON t=typ {t}) EQ init=expr SEMICOLON
-    { SDecl { kind = VConst; name; typ; init } }
-  | lhs=expr EQ e=expr SEMICOLON { SAssign (lhs, e) }
+  | LET pat=pattern typ=option(COLON t=typ {t}) EQ init=expr SEMICOLON
+    { SDecl { kind = VLet; pat; typ; init } }
+  | VAR pat=pattern typ=option(COLON t=typ {t}) EQ init=expr SEMICOLON
+    { SDecl { kind = VVar; pat; typ; init } }
+  | CONST pat=pattern typ=option(COLON t=typ {t}) EQ init=expr SEMICOLON
+    { SDecl { kind = VConst; pat; typ; init } }
+  | lhs=expr EQ rhs=expr SEMICOLON { SAssign (lhs, rhs) }
+  | lhs=expr PLUS_EQ rhs=expr SEMICOLON { SAssign (lhs, EBinOp (lhs, Add, rhs)) }
+  | lhs=expr MINUS_EQ rhs=expr SEMICOLON { SAssign (lhs, EBinOp (lhs, Sub, rhs)) }
+  | lhs=expr STAR_EQ rhs=expr SEMICOLON { SAssign (lhs, EBinOp (lhs, Mul, rhs)) }
+  | lhs=expr SLASH_EQ rhs=expr SEMICOLON { SAssign (lhs, EBinOp (lhs, Div, rhs)) }
   | RETURN e=option(expr) SEMICOLON { SReturn e }
   | e=expr SEMICOLON { SExpr e }
   | WHILE cond=expr_no_struct b=block { SWhile (cond, b) }
@@ -177,6 +183,7 @@ expr_base(X):
   | IF cond=expr_no_struct thn=block els=option(ELSE e=else_branch {e}) { EIf (cond, thn, els) }
   | e1=X DOT id=IDENT LPAREN args=separated_list(COMMA, expr) RPAREN { EMethodCall (e1, id, args, ref None) }
   | e=X DOT f=IDENT { EField (e, f) }
+  | e=X DOT i=INT { EField (e, Int64.to_string i) }
   | MATCH e=expr_no_struct LBRACE arms=nonempty_list(match_arm) RBRACE { EMatch (e, arms) }
   | path=module_path LPAREN args=separated_list(COMMA, expr) RPAREN
     { match path with
@@ -192,6 +199,7 @@ expr_base(X):
   | l=literal { ELit l }
   | s=FSTRING_VAL { EFormatStr (ref s, ref []) }
   | path=module_path { match path with | [id] -> EVar id | _ -> EPathVar path }
+  | LPAREN e1=expr COMMA elems=separated_nonempty_list(COMMA, expr) RPAREN { ETuple (e1 :: elems) }
   | LPAREN e=expr RPAREN { e }
 
 field_init:
@@ -215,6 +223,7 @@ pattern:
   | OK { PVariant ("Ok", None) }
   | ERR { PVariant ("Err", None) }
   | v=variant_ident LPAREN args=separated_list(COMMA, pattern) RPAREN { PVariant (v, Some args) }
+  | LPAREN p1=pattern COMMA pats=separated_nonempty_list(COMMA, pattern) RPAREN { PTuple (p1 :: pats) }
 
 else_branch:
   | b=block { b }
@@ -225,6 +234,7 @@ literal:
   | v=INT t=option(int_suffix) { LInt (v, t) }
   | v=BOOL_VAL { LBool v }
   | v=STRING_VAL { LStr v }
+  | v=CHAR_VAL { LChar v }
 
 int_suffix:
   | U8 { TU8 } | U16 { TU16 } | U32 { TU32 } | U64 { TU64 }

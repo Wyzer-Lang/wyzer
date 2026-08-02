@@ -1,7 +1,7 @@
 type base_type =
   | TU8 | TU16 | TU32 | TU64 | TUSize
   | TI8 | TI16 | TI32 | TI64 | TISize
-  | TBool | TStr | TUnit
+  | TBool | TStr | TUnit | TChar
   | TCustom of string
   | TGenericApp of typ list * base_type
 [@@deriving show, eq]
@@ -11,6 +11,7 @@ and typ =
   | TResult of typ * typ
   | TRole of typ * string
   | TArray of typ
+  | TTuple of typ list
 [@@deriving show, eq]
 
 type binop =
@@ -28,6 +29,7 @@ type literal =
   | LInt of int64 * base_type option
   | LBool of bool
   | LStr of string
+  | LChar of char
 [@@deriving show, eq]
 
 type pattern =
@@ -35,6 +37,7 @@ type pattern =
   | PIdent of string
   | PVariant of string * pattern list option
   | PLit of literal
+  | PTuple of pattern list
 [@@deriving show, eq]
 
 type var_kind = VLet | VVar | VConst
@@ -58,6 +61,7 @@ type expr =
   | ECast of expr * typ
   | EArray of expr list
   | EIndex of expr * expr
+  | ETuple of expr list
   | ETransfer of expr * string
   | EFormatStr of string ref * (expr * string) list ref
   | EGenericApp of typ list * expr
@@ -71,7 +75,7 @@ type expr =
 [@@deriving show, eq]
 
 and stmt =
-  | SDecl of { kind: var_kind; name: string; typ: typ option; init: expr }
+  | SDecl of { kind: var_kind; pat: pattern; typ: typ option; init: expr }
   | SAssign of expr * expr
   | SExpr of expr
   | SWhile of expr * block

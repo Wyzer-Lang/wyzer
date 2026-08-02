@@ -5,9 +5,11 @@ type value =
   | VInt of int64
   | VBool of bool
   | VStr of string
+  | VChar of char
   | VUnit
   | VPtr of int
   | VArray of value array
+  | VTuple of value list
   | VFormatStr of string * (value * string) list
 [@@deriving show]
 
@@ -54,6 +56,7 @@ let rec print_val oc is_nl arg =
   | VInt i -> if is_nl then Printf.fprintf oc "%Ld\n" i else Printf.fprintf oc "%Ld" i
   | VBool b -> if is_nl then Printf.fprintf oc "%b\n" b else Printf.fprintf oc "%b" b
   | VStr s -> if is_nl then Printf.fprintf oc "%s\n" s else Printf.fprintf oc "%s" s
+  | VChar c -> if is_nl then Printf.fprintf oc "%c\n" c else Printf.fprintf oc "%c" c
   | VUnit -> if is_nl then Printf.fprintf oc "()\n" else Printf.fprintf oc "()"
   | VPtr ptr -> 
        let entry = IntMap.find ptr !heap in
@@ -63,6 +66,7 @@ let rec print_val oc is_nl arg =
        | HStruct _ -> if is_nl then Printf.fprintf oc "struct{...}\n" else Printf.fprintf oc "struct{...}"
        | HEnum (_, v_name, _) -> if is_nl then Printf.fprintf oc "%s(...)\n" v_name else Printf.fprintf oc "%s(...)" v_name)
   | VArray _ -> if is_nl then Printf.fprintf oc "[...]\n" else Printf.fprintf oc "[...]"
+  | VTuple _ -> if is_nl then Printf.fprintf oc "(...)\n" else Printf.fprintf oc "(...)"
   | VFormatStr (s, pieces) ->
       Printf.fprintf oc "%s" s;
       List.iter (fun (v, next_s) ->
@@ -108,11 +112,40 @@ let empty_env = {
 exception EvalError of string
 exception Return of value
 
+let rec match_pat p v current_env =
+  match p, v with
+  | PWildcard, _ -> true, current_env
+  | PIdent id, _ -> true, { current_env with vars = StringMap.add id (ref v) current_env.vars }
+  | PTuple pats, VTuple vals ->
+      if List.length pats <> List.length vals then false, current_env
+      else
+        List.fold_left2 (fun (m_acc, env_acc) p_i v_i ->
+          if not m_acc then false, env_acc
+          else match_pat p_i v_i env_acc
+        ) (true, current_env) pats vals
+  | PLit (LInt (i, _)), VInt i_val -> (i = i_val), current_env
+  | PLit (LBool b), VBool b_val -> (b = b_val), current_env
+  | PLit (LStr s), VStr s_val -> (s = s_val), current_env
+  | PLit (LChar c), VChar c_val -> (c = c_val), current_env
+  | PVariant (name, None), VStr s -> (name = s), current_env
+  | PVariant (name, None), VPtr ptr -> 
+      (match (IntMap.find ptr !heap).data with
+      | HOk _ when name = "Ok" -> true, current_env
+      | HErr _ when name = "Err" -> true, current_env
+      | _ -> false, current_env)
+  | PVariant (name, Some [inner_p]), VPtr ptr -> 
+      (match (IntMap.find ptr !heap).data with
+      | HOk inner when name = "Ok" -> match_pat inner_p inner current_env
+      | HErr inner when name = "Err" -> match_pat inner_p inner current_env
+      | _ -> false, current_env)
+  | _ -> false, current_env
+
 let rec eval_expr env e =
   match e with
   | ELit (LInt (v, _)) -> VInt v
   | ELit (LBool v) -> VBool v
   | ELit (LStr v) -> VStr v
+  | ELit (LChar c) -> VChar c
   | EVar name ->
       (match StringMap.find_opt name env.vars with
       | Some v_ref -> !v_ref
@@ -516,7 +549,10 @@ let rec eval_expr env e =
               | Some f_val -> f_val
               | None -> raise (EvalError ("Field " ^ field_name ^ " not found")))
           | _ -> raise (EvalError "Field access on non-struct"))
-      | _ -> raise (EvalError "Field access on non-pointer"))
+      | VTuple lst ->
+          (try List.nth lst (int_of_string field_name)
+          with _ -> raise (EvalError ("Invalid tuple index: " ^ field_name)))
+      | _ -> raise (EvalError "Field access on non-pointer or non-tuple"))
   | EMatch (e, arms) ->
       let v = eval_expr env e in
       let rec try_match arms =
@@ -584,8 +620,10 @@ let rec eval_expr env e =
   | ECast (e, _) -> eval_expr env e
   | EGenericApp (_, e) -> eval_expr env e
   | EArray elems ->
-      let evaled_elems = List.map (eval_expr env) elems in
-      VArray (Array.of_list evaled_elems)
+      let arr = Array.of_list (List.map (eval_expr env) elems) in
+      VArray arr
+  | ETuple elems ->
+      VTuple (List.map (eval_expr env) elems)
   | EIndex (e, i) ->
       let v_arr = eval_expr env e in
       let v_idx = eval_expr env i in
@@ -665,10 +703,11 @@ let rec eval_expr env e =
 
 and eval_stmt env stmt =
   match stmt with
-  | SDecl { kind = _; name; typ = _; init } ->
+  | SDecl { kind = _; pat; typ = _; init } ->
       let v = eval_expr env init in
-      let v_ref = ref v in
-      { env with vars = StringMap.add name v_ref env.vars }
+      let matches, new_env = match_pat pat v env in
+      if not matches then raise (EvalError "Pattern match failed in variable declaration");
+      new_env
   | SAssign (lhs, e) ->
       let v = eval_expr env e in
       (match lhs with

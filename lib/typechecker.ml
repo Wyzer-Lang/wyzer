@@ -49,6 +49,7 @@ let rec add_role_if_missing t r =
   match t with
   | TRole _ -> t
   | TResult (t1, t2) -> TRole (TResult (add_role_if_missing t1 r, add_role_if_missing t2 r), r)
+  | TTuple types -> TRole (TTuple (List.map (fun t -> add_role_if_missing t r) types), r)
   | TArray inner -> TRole (TArray inner, r)
   | _ -> TRole (t, r)
 
@@ -74,6 +75,7 @@ let rec is_printable t =
   | TBase _ -> true
   | TArray _ -> true
   | TResult _ -> true
+  | TTuple _ -> true
   | TRole (inner, _) -> is_printable inner
 
 let rec is_copy_type t =
@@ -105,6 +107,7 @@ let rec substitute_typ subst t =
   | TResult (t1, t2) -> TResult (substitute_typ subst t1, substitute_typ subst t2)
   | TRole (inner, r) -> TRole (substitute_typ subst inner, r)
   | TArray inner -> TArray (substitute_typ subst inner)
+  | TTuple types -> TTuple (List.map (substitute_typ subst) types)
 
 let rec types_compatible expected actual =
   if expected = actual then true
@@ -121,7 +124,33 @@ let rec types_compatible expected actual =
       types_compatible t_exp t_act
   | TBase (TGenericApp (targs1, inner1)), TBase (TGenericApp (targs2, inner2)) ->
       inner1 = inner2 && List.length targs1 = List.length targs2 && List.for_all2 types_compatible targs1 targs2
+  | TTuple types1, TTuple types2 ->
+      List.length types1 = List.length types2 && List.for_all2 types_compatible types1 types2
   | _, _ -> false
+
+let rec unify_type expected actual subst params =
+  match expected, actual with
+  | TBase (TCustom name), _ when List.mem name params ->
+      (match StringMap.find_opt name subst with
+      | Some t -> if types_compatible t actual then subst else raise (TypeError ("Unification failed: conflicting types for " ^ name))
+      | None -> StringMap.add name actual subst)
+  | TRole (inner1, _), TRole (inner2, _) -> unify_type inner1 inner2 subst params
+  | TRole (inner1, _), _ -> unify_type inner1 actual subst params
+  | _, TRole (inner2, _) -> unify_type expected inner2 subst params
+  | TArray inner1, TArray inner2 -> unify_type inner1 inner2 subst params
+  | TTuple t1s, TTuple t2s ->
+      if List.length t1s <> List.length t2s then raise (TypeError "Unification failed: tuple length mismatch");
+      List.fold_left2 (fun s t1 t2 -> unify_type t1 t2 s params) subst t1s t2s
+  | TResult (ok1, err1), TResult (ok2, err2) ->
+      let s1 = unify_type ok1 ok2 subst params in
+      unify_type err1 err2 s1 params
+  | TBase (TGenericApp (targs1, inner1)), TBase (TGenericApp (targs2, inner2)) ->
+      if inner1 <> inner2 then raise (TypeError "Unification failed: generic app mismatch");
+      if List.length targs1 <> List.length targs2 then raise (TypeError "Unification failed: generic app length mismatch");
+      List.fold_left2 (fun s t1 t2 -> unify_type t1 t2 s params) subst targs1 targs2
+  | _, _ ->
+      if types_compatible expected actual then subst
+      else raise (TypeError ("Unification failed: incompatible types " ^ Ast.show_typ expected ^ " and " ^ Ast.show_typ actual))
 
 let is_integer_type = function
   | TU8 | TU16 | TU32 | TU64 | TI8 | TI16 | TI32 | TI64 -> true
@@ -177,6 +206,7 @@ let check_match_exhaustiveness env typ arms =
               | PWildcard | PIdent _ -> StringSet.empty
               | PVariant (v, _) -> StringSet.remove v set
               | PLit _ -> set
+              | PTuple _ -> set (* Tuples don't have exhaustiveness checks beyond basic typechecking yet *)
             in
             process_pat set pat
           ) initial_set arms in
@@ -191,6 +221,7 @@ let check_match_exhaustiveness env typ arms =
           | PWildcard | PIdent _ -> StringSet.empty
           | PVariant (v, _) -> StringSet.remove v set
           | PLit _ -> set
+          | PTuple _ -> set
         in
         process_pat set pat
       ) initial_set arms in
@@ -209,14 +240,82 @@ let check_match_exhaustiveness env typ arms =
       ) initial_set arms in
       if not (StringSet.is_empty remaining) then
         raise (TypeError ("Non-exhaustive pattern matching for bool: missing value(s) " ^ String.concat ", " (StringSet.elements remaining)))
+  | TTuple _ ->
+      let has_tuple_catch = List.exists (fun (pat, _) ->
+        match pat with
+        | PWildcard | PIdent _ | PTuple _ -> true
+        | _ -> false
+      ) arms in
+      if not has_tuple_catch then raise (TypeError "Non-exhaustive pattern matching for Tuple: requires a tuple pattern, wildcard, or identifier")
   | _ ->
       let has_catch_all = List.exists (fun (pat, _) ->
         match pat with
         | PWildcard | PIdent _ -> true
         | _ -> false
       ) arms in
-      if not has_catch_all then
-        raise (TypeError ("Non-exhaustive pattern matching on non-enum type: requires a wildcard pattern '_' or identifier pattern"))
+      if not has_catch_all then raise (TypeError "Non-exhaustive pattern matching on non-enum type: requires a wildcard pattern '_' or identifier pattern")
+
+let rec bind_pat env pat typ is_mut =
+  match pat with
+  | PWildcard -> env
+  | PLit l ->
+      let lit_t = match l with
+      | LInt (_, Some t) -> TBase t
+      | LInt (_, None) -> 
+          let base_typ = match typ with TRole (t, _) -> t | _ -> typ in
+          (match base_typ with
+          | TBase t when is_integer_type t -> typ
+          | _ -> TBase TI32)
+      | LBool _ -> TBase TBool
+      | LStr _ -> TBase TStr
+      | LChar _ -> TBase TChar
+      in
+      if not (types_compatible typ lit_t) then raise (TypeError "Pattern literal type mismatch");
+      env
+  | PIdent id -> { env with vars = StringMap.add id (add_role_if_missing typ env.current_role, is_mut, Live) env.vars }
+  | PVariant (variant_name, Some pat_list) ->
+      let base_t = match typ with TRole (t, _) -> t | _ -> typ in
+      (match base_t with
+      | TBase (TCustom enum_name) ->
+          (match StringMap.find_opt enum_name env.enums with
+          | Some enum_decl ->
+              (match List.find_opt (fun (m: Ast.enum_member) -> m.name = variant_name) enum_decl.members with
+              | Some variant ->
+                  if List.length pat_list <> List.length variant.payload then
+                    raise (TypeError ("Pattern payload length mismatch for variant " ^ variant_name));
+                  List.fold_left2 (fun env p t -> bind_pat env p t is_mut) env pat_list variant.payload
+              | None -> raise (TypeError ("Variant " ^ variant_name ^ " not found in enum " ^ enum_name)))
+          | None -> env)
+      | TResult (t1, t2) ->
+          if variant_name = "Ok" && List.length pat_list = 1 then bind_pat env (List.hd pat_list) t1 is_mut
+          else if variant_name = "Err" && List.length pat_list = 1 then bind_pat env (List.hd pat_list) t2 is_mut
+          else raise (TypeError "Result pattern length mismatch")
+      | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
+  | PVariant (variant_name, None) ->
+      let base_t = match typ with TRole (t, _) -> t | _ -> typ in
+      (match base_t with
+      | TBase (TCustom enum_name) ->
+          (match StringMap.find_opt enum_name env.enums with
+          | Some enum_decl ->
+              (match List.find_opt (fun (m: Ast.enum_member) -> m.name = variant_name) enum_decl.members with
+              | Some variant ->
+                  if List.length variant.payload > 0 then
+                    raise (TypeError ("Variant " ^ variant_name ^ " requires a payload"));
+                  env
+              | None -> raise (TypeError ("Variant " ^ variant_name ^ " not found in enum " ^ enum_name)))
+          | None -> env)
+      | TResult _ ->
+          raise (TypeError "Result variants (Ok/Err) expect a payload")
+      | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
+  | PTuple pat_list ->
+      let base_t = match typ with TRole (t, _) -> t | _ -> typ in
+      (match base_t with
+      | TTuple typ_list ->
+          if List.length pat_list <> List.length typ_list then
+            raise (TypeError "Tuple pattern length mismatch");
+          List.fold_left2 (fun env p t -> bind_pat env p t is_mut) env pat_list typ_list
+      | _ -> raise (TypeError "Expected tuple type for tuple pattern")
+      )
 
 let rec check_expr_impl env e expected_typ_opt =
   match e with
@@ -233,6 +332,7 @@ let rec check_expr_impl env e expected_typ_opt =
           | _ -> TBase TI32, env))
   | ELit (LBool _) -> TBase TBool, env
   | ELit (LStr _) -> TBase TStr, env
+  | ELit (LChar _) -> TBase TChar, env
   | EVar name ->
       (match StringMap.find_opt name env.vars with
       | Some (_, _, Consumed) -> raise (TypeError ("Variable " ^ name ^ " has already been consumed"))
@@ -327,7 +427,45 @@ let rec check_expr_impl env e expected_typ_opt =
               ) else
                 let final_ret = if f_role = env_clean.current_role then base_ret else TRole (base_ret, f_role) in
                 final_ret, env_after_args
-          | None -> raise (TypeError ("Undefined function: " ^ name))))
+          | None ->
+              (match StringMap.find_opt name env_clean.generic_items with
+              | Some (params, IFn f) ->
+                  if List.length args <> List.length f.params then raise (TypeError ("Arity mismatch for " ^ name));
+                  (* Infer generic arguments! *)
+                  let args_typed = List.map (fun arg_expr -> 
+                     let t_arg, _ = check_expr env_clean arg_expr None in
+                     t_arg
+                  ) args in
+                  let subst = List.fold_left2 (fun acc (p: Ast.param) arg_t ->
+                     unify_type p.typ arg_t acc params
+                  ) StringMap.empty f.params args_typed in
+                  
+                  let targs = List.map (fun p -> 
+                    match StringMap.find_opt p subst with
+                    | Some t -> t
+                    | None -> raise (TypeError ("Could not infer type argument " ^ p ^ " for " ^ name))
+                  ) params in
+                  
+                  let subst = List.fold_left2 (fun acc p t -> StringMap.add p t acc) StringMap.empty params targs in
+                  let env_after_args = List.fold_left2 (fun current_env (p: Ast.param) arg_expr ->
+                    let p_typ = substitute_typ subst p.typ in
+                    let t_arg, next_env = check_expr current_env arg_expr (Some p_typ) in
+                    if not (types_compatible p_typ t_arg) then
+                      raise (TypeError ("Type mismatch in function argument " ^ p.name));
+                    next_env
+                  ) env_clean f.params args in
+                  let base_ret = match f.ret_typ with
+                    | Some rt -> substitute_typ subst rt
+                    | None -> TBase TUnit
+                  in
+                  let f_role = Option.value f.role ~default:env_clean.current_role in
+                  if f_role <> env_clean.current_role && f_role <> "global" then (
+                    let ret_with_role = TRole (base_ret, f_role) in
+                    ret_with_role, env_after_args
+                  ) else
+                    let final_ret = if f_role = env_clean.current_role then base_ret else TRole (base_ret, f_role) in
+                    final_ret, env_after_args
+              | _ -> raise (TypeError ("Undefined function: " ^ name)))))
   | EMethodCall (obj, method_name, args, resolved_name_ref) ->
       let t_obj, _ = check_expr env obj None in
       let rec find_method impls =
@@ -708,7 +846,42 @@ let rec check_expr_impl env e expected_typ_opt =
                 | None -> raise (TypeError ("Struct " ^ name ^ " missing field " ^ f_name))
               ) env_clean fields in
               TBase (TCustom name), env_final
-          | None -> raise (TypeError ("Undeclared struct: " ^ name))))
+          | None ->
+              (match StringMap.find_opt name env_clean.generic_items with
+              | Some (params, IStruct s_decl) ->
+                  if List.length fields <> List.length s_decl.fields then
+                    raise (TypeError ("Arity mismatch for struct " ^ name));
+                  let fields_typed = List.map (fun (f_name, f_expr) -> 
+                     let t_expr, _ = check_expr env_clean f_expr None in
+                     (f_name, t_expr)
+                  ) fields in
+                  let subst = List.fold_left (fun acc (f_name, arg_t) ->
+                     match List.find_opt (fun (f : Ast.field) -> f.name = f_name) s_decl.fields with
+                     | Some f_decl -> unify_type f_decl.typ arg_t acc params
+                     | None -> raise (TypeError ("Struct " ^ name ^ " missing field " ^ f_name))
+                  ) StringMap.empty fields_typed in
+                  
+                  let targs = List.map (fun p -> 
+                    match StringMap.find_opt p subst with
+                    | Some t -> t
+                    | None -> raise (TypeError ("Could not infer type argument " ^ p ^ " for " ^ name))
+                  ) params in
+                  
+                  let subst = List.fold_left2 (fun acc p t -> StringMap.add p t acc) StringMap.empty params targs in
+                  let env_final = List.fold_left (fun current_env (f_name, f_expr) ->
+                    match List.find_opt (fun (f : Ast.field) -> f.name = f_name) s_decl.fields with
+                    | Some f_decl ->
+                        let f_typ = substitute_typ subst f_decl.typ in
+                        let t_expr, env_next = check_expr current_env f_expr (Some f_typ) in
+                        if not (types_compatible f_typ t_expr) then (
+                          print_endline ("Expected: " ^ show_typ f_typ ^ " but got: " ^ show_typ t_expr);
+                          raise (TypeError ("Type mismatch in field " ^ f_name))
+                        );
+                        env_next
+                    | None -> raise (TypeError ("Struct " ^ name ^ " missing field " ^ f_name))
+                  ) env_clean fields in
+                  TBase (TGenericApp (targs, TCustom name)), env_final
+              | _ -> raise (TypeError ("Undeclared struct: " ^ name)))))
   | EField (e, field_name) ->
       let t_e, env1 = check_expr env e None in
       let env_res = match e with
@@ -735,64 +908,17 @@ let rec check_expr_impl env e expected_typ_opt =
               | Some f_decl -> f_decl.typ, env_res
               | None -> raise (TypeError ("Unknown field " ^ field_name ^ " on struct " ^ name)))
           | None -> raise (TypeError ("Unknown struct: " ^ name)))
+      | TTuple typ_list ->
+          (try
+            let idx = int_of_string field_name in
+            List.nth typ_list idx, env1
+          with _ -> raise (TypeError ("Invalid tuple index: " ^ field_name)))
       | _ -> raise (TypeError "Field access on non-struct type"))
   | EMatch (e, arms) ->
       let t_e, env1 = check_expr env e None in
       check_match_exhaustiveness env1 t_e arms;
       let arm_results = List.map (fun (pat, e_arm) ->
-        let rec bind_pat env pat typ =
-          match pat with
-          | PWildcard -> env
-          | PLit l ->
-              let lit_t = match l with
-              | LInt (_, Some t) -> TBase t
-              | LInt (_, None) -> 
-                  let base_typ = match typ with TRole (t, _) -> t | _ -> typ in
-                  (match base_typ with
-                  | TBase t when is_integer_type t -> typ
-                  | _ -> TBase TI32)
-              | LBool _ -> TBase TBool
-              | LStr _ -> TBase TStr
-              in
-              if not (types_compatible typ lit_t) then raise (TypeError "Pattern literal type mismatch");
-              env
-          | PIdent id -> { env with vars = StringMap.add id (add_role_if_missing typ env.current_role, false, Live) env.vars }
-          | PVariant (variant_name, Some pat_list) ->
-              let base_t = match typ with TRole (t, _) -> t | _ -> typ in
-              (match base_t with
-              | TBase (TCustom enum_name) ->
-                  (match StringMap.find_opt enum_name env.enums with
-                  | Some enum_decl ->
-                      (match List.find_opt (fun (m: Ast.enum_member) -> m.name = variant_name) enum_decl.members with
-                      | Some variant ->
-                          if List.length pat_list <> List.length variant.payload then
-                            raise (TypeError ("Pattern payload length mismatch for variant " ^ variant_name));
-                          List.fold_left2 bind_pat env pat_list variant.payload
-                      | None -> raise (TypeError ("Variant " ^ variant_name ^ " not found in enum " ^ enum_name)))
-                  | None -> env)
-              | TResult (t1, t2) ->
-                  if variant_name = "Ok" && List.length pat_list = 1 then bind_pat env (List.hd pat_list) t1
-                  else if variant_name = "Err" && List.length pat_list = 1 then bind_pat env (List.hd pat_list) t2
-                  else raise (TypeError "Result pattern length mismatch")
-              | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
-          | PVariant (variant_name, None) ->
-              let base_t = match typ with TRole (t, _) -> t | _ -> typ in
-              (match base_t with
-              | TBase (TCustom enum_name) ->
-                  (match StringMap.find_opt enum_name env.enums with
-                  | Some enum_decl ->
-                      (match List.find_opt (fun (m: Ast.enum_member) -> m.name = variant_name) enum_decl.members with
-                      | Some variant ->
-                          if variant.payload <> [] then
-                            raise (TypeError ("Variant " ^ variant_name ^ " expects a payload"));
-                          env
-                      | None -> raise (TypeError ("Variant " ^ variant_name ^ " not found in enum " ^ enum_name)))
-                  | None -> env)
-              | TResult _ ->
-                  raise (TypeError "Result variants (Ok/Err) expect a payload")
-              | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
-        in
-        let env_arm = bind_pat env1 pat t_e in
+        let env_arm = bind_pat env1 pat t_e false in
         check_expr env_arm e_arm None
       ) arms in
       let first_t, first_env = List.hd arm_results in
@@ -826,6 +952,23 @@ let rec check_expr_impl env e expected_typ_opt =
         ) env_first (List.tl elems) in
         TArray t_first, env_final
       )
+  | ETuple elems ->
+      let expected_elem_types = match expected_typ_opt with
+        | Some (TTuple ts) -> Some ts
+        | Some (TRole (TTuple ts, _)) -> Some ts
+        | _ -> None
+      in
+      let env_curr = ref env in
+      let types = List.mapi (fun i elem ->
+        let expected_t = match expected_elem_types with
+          | Some ts when i < List.length ts -> Some (List.nth ts i)
+          | _ -> None
+        in
+        let t_elem, env_next = check_expr !env_curr elem expected_t in
+        env_curr := env_next;
+        t_elem
+      ) elems in
+      TTuple types, !env_curr
   | EIndex (arr, i) ->
       let t_arr, env2 = check_expr env arr None in
       let t_i, env3 = check_expr env2 i None in
@@ -871,24 +1014,24 @@ and check_expr env e expected_typ_opt =
 
 and check_stmt env stmt =
   match stmt with
-  | SDecl { kind; name; typ; init } ->
+  | SDecl { kind; pat; typ; init } ->
       let t_init, env1 = check_expr env init typ in
       let typ_with_role = match typ with
         | Some t -> Some (add_role_if_missing t env1.current_role)
         | None -> None
       in
       (match typ_with_role with
-      | Some t -> if not (types_compatible t t_init) then raise (TypeError ("Type mismatch in declaration for " ^ name))
+      | Some t -> if not (types_compatible t t_init) then raise (TypeError ("Type mismatch in declaration"))
       | None -> ());
       let t_final = Option.value typ_with_role ~default:t_init in
       let t_final = add_role_if_missing t_final env1.current_role in
       if kind = VConst then (
          (match init with
          | ELit _ -> ()
-         | _ -> raise (TypeError ("const " ^ name ^ " must be initialized with a constant literal")))
+         | _ -> raise (TypeError ("const variables must be initialized with a constant literal")))
       );
       let is_mut = (kind = VVar) in
-      { env1 with vars = StringMap.add name (t_final, is_mut, Live) env1.vars }
+      bind_pat env1 pat t_final is_mut
   | SAssign (lhs, e) ->
       (match lhs with
       | EVar name ->

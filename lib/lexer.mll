@@ -48,7 +48,7 @@ rule read = parse
   | "usize" { USIZE }
   | "isize" { ISIZE }
   | "i8" { I8 } | "i16" { I16 } | "i32" { I32 } | "i64" { I64 }
-  | "bool" { BOOL } | "str" { STR }
+  | "bool" { BOOL } | "str" { STR } | "char" { CHAR }
   | "true" { BOOL_VAL true }
   | "false" { BOOL_VAL false }
   | "+" { PLUS }
@@ -68,6 +68,10 @@ rule read = parse
   | ">=" { GTE }
   | "<" { LT }
   | ">" { GT }
+  | "+=" { PLUS_EQ }
+  | "-=" { MINUS_EQ }
+  | "*=" { STAR_EQ }
+  | "/=" { SLASH_EQ }
   | "=" { EQ }
   | "=>" { FATARROW }
   | "(" { LPAREN }
@@ -87,6 +91,7 @@ rule read = parse
   | digit+ as n { INT (Int64.of_string n) }
   | '"' { read_string (Buffer.create 17) lexbuf }
   | "f\"" { read_fstring (Buffer.create 17) lexbuf }
+  | '\'' { read_char lexbuf }
   | ident as id { IDENT id }
   | _ { raise (SyntaxError ("Unexpected char: " ^ Lexing.lexeme lexbuf)) }
   | eof { EOF }
@@ -122,3 +127,13 @@ and read_fstring buf = parse
     }
   | _ { raise (SyntaxError ("Illegal f-string character: " ^ Lexing.lexeme lexbuf)) }
   | eof { raise (SyntaxError ("f-string is not terminated")) }
+
+and read_char = parse
+  | '\\' 'n' '\'' { CHAR_VAL '\n' }
+  | '\\' 'r' '\'' { CHAR_VAL '\r' }
+  | '\\' 't' '\'' { CHAR_VAL '\t' }
+  | '\\' '\\' '\'' { CHAR_VAL '\\' }
+  | '\\' '\'' '\'' { CHAR_VAL '\'' }
+  | [^ '\\' '\''] '\'' as s { CHAR_VAL s.[0] }
+  | _ { raise (SyntaxError ("Invalid char literal: " ^ Lexing.lexeme lexbuf)) }
+  | eof { raise (SyntaxError "Unterminated char literal") }

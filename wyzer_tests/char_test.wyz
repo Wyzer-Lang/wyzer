@@ -1,0 +1,14 @@
+fn main() {
+    let my_char: char = 'a';
+    let newline: char = '\n';
+    let escape: char = '\\';
+    let str_var: str = "hello";
+    let bool_var: bool = true;
+    
+    // consume them all!
+    std::io::println(my_char);
+    std::io::println(newline);
+    std::io::println(escape);
+    std::io::println(str_var);
+    std::io::println(bool_var);
+}
