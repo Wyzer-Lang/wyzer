@@ -44,9 +44,9 @@ Wyzer is designed to be simple, explicit, and easy to read. Here is a quick look
 Everything has a clear type, and variables are immutable (cannot be changed) by default. If you want to change a variable, you must explicitly use `var` instead of `let`. You can also use `const` for compile-time constants.
 ```wyzer
 fn main() {
-    const MAX: u32 = 100u32;  // Compile-time constant
-    let x: u32 = 10u32;       // Cannot be changed
-    var y: u32 = 20u32;       // Can be changed
+    const MAX: u32 = 100;  // Compile-time constant
+    let x: u32 = 10;       // Cannot be changed
+    var y: u32 = 20;       // Can be changed
     
     y = y + x;
     std::io::println(y);
@@ -62,7 +62,7 @@ struct Point {
 }
 
 fn main() {
-    let p: Point = Point { x: 10u32, y: 20u32 };
+    let p: Point = Point { x: 10, y: 20 };
     std::io::println(p.x);
 }
 ```
@@ -71,10 +71,10 @@ fn main() {
 Wyzer supports standard `if`/`else`, `while`, and `for` loops. Note that loops don't need parentheses around the condition.
 ```wyzer
 fn main() {
-    let mut i: u32 = 0u32;
-    while i < 3u32 {
+    let mut i: u32 = 0;
+    while i < 3 {
         std::io::println(i);
-        i = i + 1u32;
+        i = i + 1;
     }
 }
 ```
@@ -83,11 +83,11 @@ fn main() {
 Errors are not hidden. Functions that can fail return a `Result<T, E>`. You use `match` expressions to safely handle both the success (`Ok`) and error (`Err`) cases. Note that `match` is an expression, so if used as a standalone statement, it requires a trailing semicolon!
 ```wyzer
 fn main() {
-    let result: Result<u32, str> = Ok(42u32);
+    let result: Result<u32, str> = Ok(42);
     
     match (result) {
         Ok(value) => std::io::println(value),
-        Err(err_msg) => std::io::println(0u32)
+        Err(err_msg) => std::io::println(0)
     };
 }
 ```

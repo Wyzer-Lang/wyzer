@@ -537,7 +537,12 @@ let rec check_expr_impl env e expected_typ_opt =
           | PWildcard -> env
           | PLit l ->
               let lit_t = match l with
-              | LInt (_, t) -> TBase (Option.value t ~default:TU32)
+              | LInt (_, Some t) -> TBase t
+              | LInt (_, None) -> 
+                  let base_typ = match typ with TRole (t, _) -> t | _ -> typ in
+                  (match base_typ with
+                  | TBase t when is_integer_type t -> typ
+                  | _ -> TBase TI32)
               | LBool _ -> TBase TBool
               | LStr _ -> TBase TStr
               in
