@@ -567,39 +567,19 @@ let rec eval_expr env e =
                   (match (IntMap.find ptr !heap).data with
                   | HOk _ when name = "Ok" -> true, env
                   | HErr _ when name = "Err" -> true, env
-                  | HEnum (en, vn, []) when name = vn || name = en ^ "_" ^ vn || name = en ^ "::" ^ vn -> true, env
                   | _ -> false, env)
-              | PVariant (name, pats_opt), VPtr ptr -> 
+              | PVariant (name, Some [p]), VPtr ptr -> 
                   (match (IntMap.find ptr !heap).data with
-                  | HOk inner when name = "Ok" && pats_opt <> None -> 
-                      let pats = Option.get pats_opt in
-                      if List.length pats = 1 then
-                        match List.hd pats with
-                        | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
-                        | PWildcard -> true, env
-                        | _ -> false, env
-                      else false, env
-                  | HErr inner when name = "Err" && pats_opt <> None -> 
-                      let pats = Option.get pats_opt in
-                      if List.length pats = 1 then
-                        match List.hd pats with
-                        | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
-                        | PWildcard -> true, env
-                        | _ -> false, env
-                      else false, env
-                  | HEnum (en, vn, payload) when name = vn || name = en ^ "_" ^ vn || name = en ^ "::" ^ vn ->
-                      let pats = Option.value pats_opt ~default:[] in
-                      if List.length pats = List.length payload then
-                        let rec bind_pats pats vals current_vars =
-                          match pats, vals with
-                          | [], [] -> true, current_vars
-                          | PWildcard :: pt_rest, _ :: val_rest -> bind_pats pt_rest val_rest current_vars
-                          | PIdent id :: pt_rest, val_item :: val_rest -> bind_pats pt_rest val_rest (StringMap.add id (ref val_item) current_vars)
-                          | _ -> false, current_vars
-                        in
-                        let ok, new_vars = bind_pats pats payload env.vars in
-                        ok, { env with vars = new_vars }
-                      else false, env
+                  | HOk inner when name = "Ok" -> 
+                      (match p with
+                      | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
+                      | PWildcard -> true, env
+                      | _ -> false, env)
+                  | HErr inner when name = "Err" -> 
+                      (match p with
+                      | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
+                      | PWildcard -> true, env
+                      | _ -> false, env)
                   | _ -> false, env)
               | _ -> false, env
             in

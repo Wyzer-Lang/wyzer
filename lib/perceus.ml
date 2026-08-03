@@ -30,6 +30,8 @@ let rec free_vars_expr (e: expr) : StringSet.t =
   | EGenericApp (_, e) -> free_vars_expr e
   | EArray elems ->
       List.fold_left (fun acc elem -> StringSet.union acc (free_vars_expr elem)) StringSet.empty elems
+  | ETuple elems ->
+      List.fold_left (fun acc elem -> StringSet.union acc (free_vars_expr elem)) StringSet.empty elems
   | EIndex (e, i) ->
       StringSet.union (free_vars_expr e) (free_vars_expr i)
   | EFormatStr (_, parsed_ref) ->
@@ -45,6 +47,8 @@ and bound_vars_pat (p: pattern) : StringSet.t =
   match p with
   | PIdent x -> StringSet.singleton x
   | PVariant (_, Some pat_list) ->
+      List.fold_left (fun acc p_inner -> StringSet.union acc (bound_vars_pat p_inner)) StringSet.empty pat_list
+  | PTuple pat_list ->
       List.fold_left (fun acc p_inner -> StringSet.union acc (bound_vars_pat p_inner)) StringSet.empty pat_list
   | PVariant (_, None) | PWildcard | PLit _ -> StringSet.empty
 
@@ -112,6 +116,7 @@ let rec transform_expr (live_out: StringSet.t) (e: expr) : expr =
   | ENetSend (r, e) -> ENetSend (r, transform_expr live_out e)
   | ENetRecv r -> ENetRecv r
   | EMethodCall _ -> failwith "EMethodCall should have been desugared"
+  | ETuple elems -> ETuple (List.map (transform_expr live_out) elems)
   | _ -> e (* other expressions don't currently have reuse tags *)
 
 and transform_stmt (live_out: StringSet.t) (s: stmt) : stmt =
@@ -123,6 +128,14 @@ and transform_stmt (live_out: StringSet.t) (s: stmt) : stmt =
   | SFor (id, e, b) -> SFor (id, transform_expr live_out e, transform_block live_out b)
   | SDrop x -> SDrop x
   | SReturn e_opt -> SReturn (Option.map (transform_expr live_out) e_opt)
+
+(* Extract all variable names bound by a pattern *)
+and names_in_pat (p: pattern) : StringSet.t =
+  match p with
+  | PIdent x -> StringSet.singleton x
+  | PTuple pats -> List.fold_left (fun acc p -> StringSet.union acc (names_in_pat p)) StringSet.empty pats
+  | PVariant (_, Some pats) -> List.fold_left (fun acc p -> StringSet.union acc (names_in_pat p)) StringSet.empty pats
+  | PVariant (_, None) | PWildcard | PLit _ -> StringSet.empty
 
 and transform_block (live_out: StringSet.t) (b: block) : block =
   (* Backwards pass to compute liveness and insert drops for locally declared vars *)
@@ -136,13 +149,13 @@ and transform_block (live_out: StringSet.t) (b: block) : block =
         let new_live = StringSet.union next_live s_free in
         
         let new_locals = match s with
-          | SDecl d -> StringSet.add d.name locals
+          | SDecl d -> StringSet.union (names_in_pat d.pat) locals
           | _ -> locals
         in
         
-        (* If this was a decl, it's no longer live before this statement *)
+        (* If this was a decl, its bound names are no longer live before this statement *)
         let new_live = match s with
-          | SDecl d -> StringSet.remove d.name new_live
+          | SDecl d -> StringSet.diff new_live (names_in_pat d.pat)
           | _ -> new_live
         in
         

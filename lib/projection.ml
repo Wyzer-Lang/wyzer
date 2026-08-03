@@ -34,7 +34,9 @@ let rec roles_in_expr e =
       | EMatch (e, cases) ->
           let c = roles_in_expr e in
           List.fold_left (fun acc (_, ce) -> StringSet.union acc (roles_in_expr ce)) c cases
-      | EOk (e, _) | EErr (e, _) -> roles_in_expr e)
+      | EOk (e, _) | EErr (e, _) -> roles_in_expr e
+      | ETuple items ->
+          List.fold_left (fun acc elem -> StringSet.union acc (roles_in_expr elem)) StringSet.empty items)
 
 and roles_in_stmt s =
   match s with
@@ -134,7 +136,36 @@ let rec project_expr e target_role =
           (match project_expr e1 target_role, project_expr e2 target_role with
           | Some p1, Some p2 -> Some (EIndex (p1, p2))
           | _ -> None)
-      | _ -> Some e) (* Fallback for others *)
+      | EOk (e_inner, r) ->
+          Option.map (fun p -> EOk (p, r)) (project_expr e_inner target_role)
+      | EErr (e_inner, r) ->
+          Option.map (fun p -> EErr (p, r)) (project_expr e_inner target_role)
+      | ECast (e_inner, t) ->
+          Option.map (fun p -> ECast (p, t)) (project_expr e_inner target_role)
+      | EDup (tag, e_inner) ->
+          Option.map (fun p -> EDup (tag, p)) (project_expr e_inner target_role)
+      | EGenericApp (targs, e_inner) ->
+          Option.map (fun p -> EGenericApp (targs, p)) (project_expr e_inner target_role)
+      | ETyped (e_inner, t) ->
+          Option.map (fun p -> ETyped (p, t)) (project_expr e_inner target_role)
+      | ETuple items ->
+          Some (ETuple (List.filter_map (fun a -> project_expr a target_role) items))
+      | EMatch (me, arms) ->
+          let p_me = project_expr me target_role in
+          (match p_me with
+          | Some pm ->
+              let p_arms = List.map (fun (pat, arm_e) ->
+                (pat, Option.value (project_expr arm_e target_role) ~default:arm_e)
+              ) arms in
+              Some (EMatch (pm, p_arms))
+          | None -> None)
+      | EMethodCall (obj, mname, margs, resolved) ->
+          let p_obj = project_expr obj target_role in
+          let p_args = List.filter_map (fun a -> project_expr a target_role) margs in
+          (match p_obj with
+          | Some po -> Some (EMethodCall (po, mname, p_args, resolved))
+          | None -> None)
+      | _ -> Some e) (* Fallback for literals, vars, etc. *)
 
 and project_stmt s target_role =
   match s with

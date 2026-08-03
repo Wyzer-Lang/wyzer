@@ -18,11 +18,11 @@ open Ast
 
 %type <Ast.override_kind * Ast.expr> override
 
-%left BITOR
-%left BITAND
 %left OR
 %left AND
 %left EQEQ NEQ LT GT LTE GTE
+%left BITOR
+%left BITAND
 %left SHL SHR
 %left PLUS MINUS
 %left STAR SLASH
@@ -194,7 +194,7 @@ expr_base(X):
   | SIZEOF LT t=typ GT LPAREN RPAREN { ESizeOf t }
   | TYPEOF LPAREN e=expr RPAREN { ETypeOf e }
   | e=X AT r=IDENT { if r = "Comptime" then EComptime e else ETransfer (e, r) }
-  | e1=X LBRACKET e2=expr RBRACKET %prec LBRACKET { EIndex (e1, e2) }
+  | e1=X LBRACKET e2=expr RBRACKET { EIndex (e1, e2) }
   | GENERIC LT args=separated_nonempty_list(COMMA, typ) GT e=X { EGenericApp (args, e) }
   | l=literal { ELit l }
   | s=FSTRING_VAL { EFormatStr (ref s, ref []) }

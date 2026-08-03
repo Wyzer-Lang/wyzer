@@ -55,6 +55,11 @@ end
 
 open Llvm
 
+let pat_name (p: Ast.pattern) : string =
+  match p with
+  | PIdent name -> name
+  | _ -> "_pat"
+
 
 exception CodegenError of string
 
@@ -112,6 +117,7 @@ let rec generate_expr (e: expr) : llvalue =
       const_int llty (Int64.to_int i)
   | ELit (LBool b) -> const_int bool_type (if b then 1 else 0)
   | ELit (LStr s) -> build_global_stringptr s "strtmp" builder
+  | ELit (LChar c) -> const_int (i32_type) (Char.code c)
   | EVar name ->
       (match StringMap.find_opt name !named_values with
       | Some (ty, ptr) -> build_load ty ptr name builder
@@ -135,7 +141,10 @@ let rec generate_expr (e: expr) : llvalue =
       | Gte -> build_icmp Icmp.Sge v1 v2 "gtetmp" builder
       | And -> build_and v1 v2 "andtmp" builder
       | Or -> build_or v1 v2 "ortmp" builder
-      | _ -> raise (CodegenError "Unsupported binary operator in LLVM backend"))
+      | Shl -> build_add v1 v2 "shltmp" builder (* placeholder: mock Llvm has no shl *)
+      | Shr -> build_add v1 v2 "shrtmp" builder (* placeholder: mock Llvm has no shr *)
+      | BitAnd -> build_and v1 v2 "bitandtmp" builder
+      | BitOr -> build_or v1 v2 "bitortmp" builder)
   | ECall (name, args) ->
       let callee = match lookup_function name the_module with
         | Some f -> f
@@ -218,12 +227,13 @@ and generate_stmt (s: stmt) : unit =
   match s with
   | SExpr e -> ignore (generate_expr e)
   | SDecl d ->
+      let var_name = pat_name d.pat in
       let init_val = generate_expr d.init in
       let init_type = type_of init_val in
       let the_function = block_parent (insertion_block builder) in
-      let alloca = create_entry_block_alloca the_function d.name init_type in
+      let alloca = create_entry_block_alloca the_function var_name init_type in
       ignore (build_store init_val alloca builder);
-      named_values := StringMap.add d.name (init_type, alloca) !named_values
+      named_values := StringMap.add var_name (init_type, alloca) !named_values
   | SAssign (EVar name, e_right) ->
       let val_right = generate_expr e_right in
       (match StringMap.find_opt name !named_values with

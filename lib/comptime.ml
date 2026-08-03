@@ -13,7 +13,17 @@ let rec val_to_expr (v: value) : expr =
       let mapped = List.map (fun (v, lit) -> (val_to_expr v, lit)) pieces in
       EFormatStr (ref s, ref mapped)
   | VTuple vals -> ETuple (List.map val_to_expr vals)
-  | VPtr _ -> failwith "Returning heap-allocated structs/enums from @Compiler is not yet supported in val_to_expr"
+  | VPtr ptr ->
+      (match Eval.IntMap.find_opt ptr !(Eval.heap) with
+      | Some entry ->
+          (match entry.data with
+          | Eval.HStruct (name, fields) ->
+              EStruct (name, List.map (fun (n, v) -> (n, val_to_expr v)) fields, None)
+          | Eval.HOk inner -> EOk (val_to_expr inner, None)
+          | Eval.HErr inner -> EErr (val_to_expr inner, None)
+          | Eval.HEnum (_enum_name, variant_name, payload) ->
+              EPathCall ([variant_name], List.map val_to_expr payload))
+      | None -> failwith "val_to_expr: dangling pointer from @Compiler evaluation")
 
 let rec transform_expr env e =
   match e with
@@ -97,13 +107,13 @@ and transform_block env b =
   { stmts = List.map (transform_stmt env) b.stmts;
     ret_expr = Option.map (transform_expr env) b.ret_expr }
 
-let transform_item env i =
+let rec transform_item env i =
   match i with
   | IFn f ->
       let new_body = Option.map (transform_block env) f.body in
       IFn { f with body = new_body }
   | IGlobal g -> IGlobal { g with init = transform_expr env g.init }
-  | IGeneric (params, inner) -> IGeneric (params, inner) (* Ignoring generics for now, might need deep map *)
+  | IGeneric (params, inner) -> IGeneric (params, transform_item env inner)
   | _ -> i
 
 let transform_program project_root (p: program) : program =

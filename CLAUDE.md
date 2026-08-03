@@ -1,1 +1,1 @@
-/dev/urandom
+Read AGENTS.md

@@ -54,10 +54,10 @@ let rec add_role_if_missing t r =
   | _ -> TRole (t, r)
 
 let is_int_type = function
-  | TBase TU8 | TBase TU16 | TBase TU32 | TBase TU64
-  | TBase TI8 | TBase TI16 | TBase TI32 | TBase TI64 -> true
-  | TRole (TBase TU8, _) | TRole (TBase TU16, _) | TRole (TBase TU32, _) | TRole (TBase TU64, _)
-  | TRole (TBase TI8, _) | TRole (TBase TI16, _) | TRole (TBase TI32, _) | TRole (TBase TI64, _) -> true
+  | TBase TU8 | TBase TU16 | TBase TU32 | TBase TU64 | TBase TUSize
+  | TBase TI8 | TBase TI16 | TBase TI32 | TBase TI64 | TBase TISize -> true
+  | TRole (TBase TU8, _) | TRole (TBase TU16, _) | TRole (TBase TU32, _) | TRole (TBase TU64, _) | TRole (TBase TUSize, _)
+  | TRole (TBase TI8, _) | TRole (TBase TI16, _) | TRole (TBase TI32, _) | TRole (TBase TI64, _) | TRole (TBase TISize, _) -> true
   | _ -> false
 
 let is_bool_type = function
@@ -153,7 +153,7 @@ let rec unify_type expected actual subst params =
       else raise (TypeError ("Unification failed: incompatible types " ^ Ast.show_typ expected ^ " and " ^ Ast.show_typ actual))
 
 let is_integer_type = function
-  | TU8 | TU16 | TU32 | TU64 | TI8 | TI16 | TI32 | TI64 -> true
+  | TU8 | TU16 | TU32 | TU64 | TUSize | TI8 | TI16 | TI32 | TI64 | TISize -> true
   | _ -> false
 
 let parse_format_string (s: string) : string * (Ast.expr * string) list =
@@ -746,7 +746,7 @@ let rec check_expr_impl env e expected_typ_opt =
           if is_int_type t1 then TBase TBool, env2
           else raise (TypeError "Comparison operators require integer types")
       | And | Or ->
-          if t1 = TBase TBool && t2 = TBase TBool then TBase TBool, env2
+          if is_bool_type t1 && is_bool_type t2 then TBase TBool, env2
           else raise (TypeError "Logical operators require boolean types"))
   | EFormatStr (s_ref, parsed_ref) ->
       if !parsed_ref = [] then (
@@ -1081,8 +1081,12 @@ and check_stmt env stmt =
       let env2, _ = check_block env1 b in
       env2
   | SFor (id, e, b) ->
-      let _t_e, env1 = check_expr env e None in
-      let env_for = { env1 with vars = StringMap.add id (TBase TU8, false, Live) env1.vars } in
+      let t_e, env1 = check_expr env e None in
+      let elem_t = match unwrap_role t_e with
+        | TArray inner -> inner
+        | _ -> TBase TU8 (* fallback for non-array iterables *)
+      in
+      let env_for = { env1 with vars = StringMap.add id (elem_t, false, Live) env1.vars } in
       let env2, _ = check_block env_for b in
       env2
   | SReturn e_opt ->
