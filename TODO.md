@@ -68,8 +68,8 @@
 - [ ] Local channels (`mpsc::Sender`, `mpsc::Receiver`) for thread-to-thread communication on the same node.
 
 ### `std::math` (Mathematics)
-- [ ] Trigonometry (`sin`, `cos`, `tan`, `asin`, etc.).
-- [ ] Exponents and logarithms (`exp`, `log`, `log10`, `sqrt`, `pow`).
+- [x] Trigonometry (`sin`, `cos`, `tan`, `asin`, etc.).
+- [x] Exponents and logarithms (`exp`, `log`, `log10`, `sqrt`, `pow`).
 - [ ] Constants (`PI`, `E`, `TAU`).
 - [ ] Hardware intrinsics (fast math).
 
@@ -80,6 +80,11 @@
 
 ### Additional Utility Modules
 - [ ] `std::env` (CLI arguments, environment variables).
-- [ ] `std::time` (Duration, Instant, Unix epoch time).
-- [ ] `std::process` (Spawning external shell commands, exit codes).
-- [ ] `std::string` (UTF-8 string manipulation, splitting, slicing).
+- [x] `std::time` (Duration, Instant, Unix epoch time).
+- [x] `std::process` (Spawning external shell commands, exit codes).
+- [x] `std::string` (UTF-8 string manipulation, splitting, slicing).
+
+## Error Reporting & Diagnostics
+- [ ] Implement a rich diagnostic engine for `LocatedError` (like Rust's `miette` or `rustc`) using accurate source spans.
+- [ ] Connect parsing syntax errors and typechecking semantic errors to the Diagnostic engine.
+- [ ] Print visual code snippets with pointers (`^~~~~`) to highlight the exact location of errors.

@@ -46,32 +46,42 @@ let empty_env = {
 exception TypeError of string
 
 let rec add_role_if_missing t r =
-  match t with
+  match t.item with
   | TRole _ -> t
-  | TResult (t1, t2) -> TRole (TResult (add_role_if_missing t1 r, add_role_if_missing t2 r), r)
-  | TTuple types -> TRole (TTuple (List.map (fun t -> add_role_if_missing t r) types), r)
-  | TArray inner -> TRole (TArray inner, r)
-  | _ -> TRole (t, r)
+  | TResult (t1, t2) -> { item = TRole ({ item = TResult (add_role_if_missing t1 r, add_role_if_missing t2 r); span = dummy_span }, r); span = dummy_span }
+  | TTuple types -> { item = TRole ({ item = TTuple (List.map (fun t -> add_role_if_missing t r) types); span = dummy_span }, r); span = dummy_span }
+  | TArray inner -> { item = TRole ({ item = TArray inner; span = dummy_span }, r); span = dummy_span }
+  | _ -> { item = TRole (t, r); span = dummy_span }
 
-let is_int_type = function
-  | TBase TU8 | TBase TU16 | TBase TU32 | TBase TU64 | TBase TUSize
-  | TBase TI8 | TBase TI16 | TBase TI32 | TBase TI64 | TBase TISize -> true
-  | TRole (TBase TU8, _) | TRole (TBase TU16, _) | TRole (TBase TU32, _) | TRole (TBase TU64, _) | TRole (TBase TUSize, _)
-  | TRole (TBase TI8, _) | TRole (TBase TI16, _) | TRole (TBase TI32, _) | TRole (TBase TI64, _) | TRole (TBase TISize, _) -> true
+let is_int_type t = match t.item with
+  | TBase TU8 | TBase TU16 | TBase TU32 | TBase TU64 | TBase TU128 | TBase TUSize
+  | TBase TI8 | TBase TI16 | TBase TI32 | TBase TI64 | TBase TI128 | TBase TISize -> true
+  | TRole ({ item = TBase TU8; _ }, _) | TRole ({ item = TBase TU16; _ }, _) | TRole ({ item = TBase TU32; _ }, _) | TRole ({ item = TBase TU64; _ }, _) | TRole ({ item = TBase TU128; _ }, _) | TRole ({ item = TBase TUSize; _ }, _)
+  | TRole ({ item = TBase TI8; _ }, _) | TRole ({ item = TBase TI16; _ }, _) | TRole ({ item = TBase TI32; _ }, _) | TRole ({ item = TBase TI64; _ }, _) | TRole ({ item = TBase TI128; _ }, _) | TRole ({ item = TBase TISize; _ }, _) -> true
   | _ -> false
 
-let is_bool_type = function
+let is_float_type_t t = match t.item with
+  | TBase TF16 | TBase TF32 | TBase TF64 | TBase TF128 -> true
+  | TRole ({ item = TBase TF16; _ }, _) | TRole ({ item = TBase TF32; _ }, _)
+  | TRole ({ item = TBase TF64; _ }, _) | TRole ({ item = TBase TF128; _ }, _) -> true
+  | _ -> false
+
+let is_numeric_type_t t = is_int_type t || is_float_type_t t
+
+
+
+let is_bool_type t = match t.item with
   | TBase TBool -> true
-  | TRole (TBase TBool, _) -> true
+  | TRole ({ item = TBase TBool; _ }, _) -> true
   | _ -> false
 
-let is_str_type = function
+let is_str_type t = match t.item with
   | TBase TStr -> true
-  | TRole (TBase TStr, _) -> true
+  | TRole ({ item = TBase TStr; _ }, _) -> true
   | _ -> false
 
 let rec is_printable t =
-  match t with
+  match t.item with
   | TBase _ -> true
   | TArray _ -> true
   | TResult _ -> true
@@ -79,57 +89,64 @@ let rec is_printable t =
   | TRole (inner, _) -> is_printable inner
 
 let rec is_copy_type t =
-  match t with
+  match t.item with
   | TRole (inner, _) -> is_copy_type inner
-  | TBase (TU8 | TU16 | TU32 | TU64 | TUSize | TI8 | TI16 | TI32 | TI64 | TISize | TBool | TStr | TUnit) -> true
+  | TBase (TU8 | TU16 | TU32 | TU64 | TU128 | TUSize | TI8 | TI16 | TI32 | TI64 | TI128 | TISize | TF16 | TF32 | TF64 | TF128 | TBool | TChar | TStr | TUnit) -> true
   | TBase (TCustom _) -> true
   | TArray _ -> true
   | _ -> false
 
 let rec unwrap_role t =
-  match t with
+  match t.item with
   | TRole (inner, _) -> unwrap_role inner
   | _ -> t
 
 
 
 let rec substitute_typ subst t =
-  match t with
+  match t.item with
   | TBase (TCustom id) ->
       (match StringMap.find_opt id subst with
       | Some t' -> t'
       | None -> t)
   | TBase (TGenericApp (targs, inner)) -> 
-      let new_inner_t = substitute_typ subst (TBase inner) in
-      let new_inner = match new_inner_t with TBase b -> b | _ -> inner in
-      TBase (TGenericApp (List.map (substitute_typ subst) targs, new_inner))
+      let new_inner_t = substitute_typ subst { item = TBase inner; span = dummy_span } in
+      let new_inner = match new_inner_t.item with TBase b -> b | _ -> inner in
+      { item = TBase (TGenericApp (List.map (substitute_typ subst) targs, new_inner)); span = dummy_span }
   | TBase _ -> t
-  | TResult (t1, t2) -> TResult (substitute_typ subst t1, substitute_typ subst t2)
-  | TRole (inner, r) -> TRole (substitute_typ subst inner, r)
-  | TArray inner -> TArray (substitute_typ subst inner)
-  | TTuple types -> TTuple (List.map (substitute_typ subst) types)
+  | TResult (t1, t2) -> { item = TResult (substitute_typ subst t1, substitute_typ subst t2); span = dummy_span }
+  | TRole (inner, r) -> { item = TRole (substitute_typ subst inner, r); span = dummy_span }
+  | TArray inner -> { item = TArray (substitute_typ subst inner); span = dummy_span }
+  | TTuple types -> { item = TTuple (List.map (substitute_typ subst) types); span = dummy_span }
 
 let rec types_compatible expected actual =
   if expected = actual then true
-  else match expected, actual with
+  else match expected.item, actual.item with
   | TResult (e1, e2), TResult (a1, a2) ->
-      let c1 = (a1 = TBase (TCustom "_") || types_compatible e1 a1) in
-      let c2 = (a2 = TBase (TCustom "_") || types_compatible e2 a2) in
+      let c1 = (a1.item = TBase (TCustom "_") || types_compatible e1 a1) in
+      let c2 = (a2.item = TBase (TCustom "_") || types_compatible e2 a2) in
       c1 && c2
   | TRole (t_exp, r_exp), TRole (t_act, r_act) ->
       if r_exp = r_act || r_act = "Poly" || r_exp = "Poly" then types_compatible t_exp t_act else false
-  | TRole (t_exp, _), t_act ->
-      types_compatible t_exp t_act
-  | t_exp, TRole (t_act, _) ->
-      types_compatible t_exp t_act
+  | TRole (t_exp, _), _ ->
+      types_compatible t_exp actual
+  | _, TRole (t_act, _) ->
+      types_compatible expected t_act
   | TBase (TGenericApp (targs1, inner1)), TBase (TGenericApp (targs2, inner2)) ->
       inner1 = inner2 && List.length targs1 = List.length targs2 && List.for_all2 types_compatible targs1 targs2
   | TTuple types1, TTuple types2 ->
       List.length types1 = List.length types2 && List.for_all2 types_compatible types1 types2
+  | TArray a1, TArray a2 ->
+      types_compatible a1 a2
+  | TBase t1, TBase t2 ->
+      if t1 = t2 then true
+      else if (match t1 with TU8|TU16|TU32|TU64|TU128|TUSize|TI8|TI16|TI32|TI64|TI128|TISize|TF16|TF32|TF64|TF128 -> true | _ -> false) &&
+              (match t2 with TU8|TU16|TU32|TU64|TU128|TUSize|TI8|TI16|TI32|TI64|TI128|TISize|TF16|TF32|TF64|TF128 -> true | _ -> false) then true
+      else false
   | _, _ -> false
 
 let rec unify_type expected actual subst params =
-  match expected, actual with
+  match expected.item, actual.item with
   | TBase (TCustom name), _ when List.mem name params ->
       (match StringMap.find_opt name subst with
       | Some t -> if types_compatible t actual then subst else raise (TypeError ("Unification failed: conflicting types for " ^ name))
@@ -153,8 +170,15 @@ let rec unify_type expected actual subst params =
       else raise (TypeError ("Unification failed: incompatible types " ^ Ast.show_typ expected ^ " and " ^ Ast.show_typ actual))
 
 let is_integer_type = function
-  | TU8 | TU16 | TU32 | TU64 | TUSize | TI8 | TI16 | TI32 | TI64 | TISize -> true
+  | TU8 | TU16 | TU32 | TU64 | TU128 | TUSize
+  | TI8 | TI16 | TI32 | TI64 | TI128 | TISize -> true
   | _ -> false
+
+let is_float_type = function
+  | TF16 | TF32 | TF64 | TF128 -> true
+  | _ -> false
+
+let is_numeric_type t = is_integer_type t || is_float_type t
 
 let parse_format_string (s: string) : string * (Ast.expr * string) list =
   let len = String.length s in
@@ -177,7 +201,7 @@ let parse_format_string (s: string) : string * (Ast.expr * string) list =
       else
         let expr_buf = Buffer.create 16 in
         let (expr_str, next_i2) = parse_expr next_i expr_buf in
-        let e = Parser.standalone_expr Lexer.read (Lexing.from_string expr_str) in
+        let e = Parser.parse_standalone_expr Lexer.read (Lexing.from_string expr_str) in
         let (next_lit, rest) = parse_all next_i2 in
         (lit, (e, next_lit) :: rest)
   in
@@ -192,8 +216,8 @@ module ExprMap = Hashtbl.Make(ExprId)
 let typed_ast_map : Ast.typ ExprMap.t = ExprMap.create 1024
 
 let check_match_exhaustiveness env typ arms =
-  let base_t = match typ with TRole (t, _) -> t | _ -> typ in
-  match base_t with
+  let base_t = match typ.item with TRole (t, _) -> t | _ -> typ in
+  match base_t.item with
   | TBase (TCustom enum_name) ->
       (match StringMap.find_opt enum_name env.enums with
       | Some enum_decl ->
@@ -202,7 +226,7 @@ let check_match_exhaustiveness env typ arms =
           in
           let remaining = List.fold_left (fun set (pat, _) ->
             let process_pat set p =
-              match p with
+              match p.item with
               | PWildcard | PIdent _ -> StringSet.empty
               | PVariant (v, _) -> StringSet.remove v set
               | PLit _ -> set
@@ -217,7 +241,7 @@ let check_match_exhaustiveness env typ arms =
       let initial_set = StringSet.of_list ["Ok"; "Err"] in
       let remaining = List.fold_left (fun set (pat, _) ->
         let process_pat set p =
-          match p with
+          match p.item with
           | PWildcard | PIdent _ -> StringSet.empty
           | PVariant (v, _) -> StringSet.remove v set
           | PLit _ -> set
@@ -231,7 +255,7 @@ let check_match_exhaustiveness env typ arms =
       let initial_set = StringSet.of_list ["true"; "false"] in
       let remaining = List.fold_left (fun set (pat, _) ->
         let process_pat set p =
-          match p with
+          match p.item with
           | PWildcard | PIdent _ -> StringSet.empty
           | PLit (LBool b) -> StringSet.remove (string_of_bool b) set
           | _ -> set
@@ -242,40 +266,42 @@ let check_match_exhaustiveness env typ arms =
         raise (TypeError ("Non-exhaustive pattern matching for bool: missing value(s) " ^ String.concat ", " (StringSet.elements remaining)))
   | TTuple _ ->
       let has_tuple_catch = List.exists (fun (pat, _) ->
-        match pat with
+        match pat.item with
         | PWildcard | PIdent _ | PTuple _ -> true
         | _ -> false
       ) arms in
       if not has_tuple_catch then raise (TypeError "Non-exhaustive pattern matching for Tuple: requires a tuple pattern, wildcard, or identifier")
   | _ ->
       let has_catch_all = List.exists (fun (pat, _) ->
-        match pat with
+        match pat.item with
         | PWildcard | PIdent _ -> true
         | _ -> false
       ) arms in
       if not has_catch_all then raise (TypeError "Non-exhaustive pattern matching on non-enum type: requires a wildcard pattern '_' or identifier pattern")
 
 let rec bind_pat env pat typ is_mut =
-  match pat with
+  match pat.item with
   | PWildcard -> env
   | PLit l ->
       let lit_t = match l with
-      | LInt (_, Some t) -> TBase t
+      | LInt (_, Some t) -> { item = TBase t; span = dummy_span }
       | LInt (_, None) -> 
-          let base_typ = match typ with TRole (t, _) -> t | _ -> typ in
-          (match base_typ with
+          let base_typ = match typ.item with TRole (t, _) -> t | _ -> typ in
+          (match base_typ.item with
           | TBase t when is_integer_type t -> typ
-          | _ -> TBase TI32)
-      | LBool _ -> TBase TBool
-      | LStr _ -> TBase TStr
-      | LChar _ -> TBase TChar
+          | _ -> { item = TBase TI32; span = dummy_span })
+      | LFloat (_, Some t) -> { item = TBase t; span = dummy_span }
+      | LFloat (_, None) -> { item = TBase TF64; span = dummy_span }
+      | LBool _ -> { item = TBase TBool; span = dummy_span }
+      | LStr _ -> { item = TBase TStr; span = dummy_span }
+      | LChar _ -> { item = TBase TChar; span = dummy_span }
       in
       if not (types_compatible typ lit_t) then raise (TypeError "Pattern literal type mismatch");
       env
   | PIdent id -> { env with vars = StringMap.add id (add_role_if_missing typ env.current_role, is_mut, Live) env.vars }
   | PVariant (variant_name, Some pat_list) ->
-      let base_t = match typ with TRole (t, _) -> t | _ -> typ in
-      (match base_t with
+      let base_t = match typ.item with TRole (t, _) -> t | _ -> typ in
+      (match base_t.item with
       | TBase (TCustom enum_name) ->
           (match StringMap.find_opt enum_name env.enums with
           | Some enum_decl ->
@@ -292,8 +318,8 @@ let rec bind_pat env pat typ is_mut =
           else raise (TypeError "Result pattern length mismatch")
       | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
   | PVariant (variant_name, None) ->
-      let base_t = match typ with TRole (t, _) -> t | _ -> typ in
-      (match base_t with
+      let base_t = match typ.item with TRole (t, _) -> t | _ -> typ in
+      (match base_t.item with
       | TBase (TCustom enum_name) ->
           (match StringMap.find_opt enum_name env.enums with
           | Some enum_decl ->
@@ -308,8 +334,8 @@ let rec bind_pat env pat typ is_mut =
           raise (TypeError "Result variants (Ok/Err) expect a payload")
       | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
   | PTuple pat_list ->
-      let base_t = match typ with TRole (t, _) -> t | _ -> typ in
-      (match base_t with
+      let base_t = match typ.item with TRole (t, _) -> t | _ -> typ in
+      (match base_t.item with
       | TTuple typ_list ->
           if List.length pat_list <> List.length typ_list then
             raise (TypeError "Tuple pattern length mismatch");
@@ -318,18 +344,29 @@ let rec bind_pat env pat typ is_mut =
       )
 
 let rec check_expr_impl env e expected_typ_opt =
-  match e with
+  match e.item with
   | ELit (LInt (_, t_opt)) -> 
       (match t_opt with
       | Some t -> TBase t, env
       | None ->
           let unwrap_expected = match expected_typ_opt with
-            | Some (TRole (inner, _)) -> Some inner
+            | Some { item = TRole (inner, _); _ } -> Some inner
             | other -> other
           in
           (match unwrap_expected with
-          | Some (TBase t) when is_integer_type t -> TBase t, env
+          | Some { item = TBase t; _ } when is_integer_type t -> TBase t, env
           | _ -> TBase TI32, env))
+  | ELit (LFloat (_, t_opt)) ->
+      (match t_opt with
+      | Some t -> TBase t, env
+      | None ->
+          let unwrap_expected = match expected_typ_opt with
+            | Some { item = TRole (inner, _); _ } -> Some inner
+            | other -> other
+          in
+          (match unwrap_expected with
+          | Some { item = TBase (TF16 | TF32 | TF64 | TF128 as t); _ } -> TBase t, env
+          | _ -> TBase TF64, env))
   | ELit (LBool _) -> TBase TBool, env
   | ELit (LStr _) -> TBase TStr, env
   | ELit (LChar _) -> TBase TChar, env
@@ -337,21 +374,21 @@ let rec check_expr_impl env e expected_typ_opt =
       (match StringMap.find_opt name env.vars with
       | Some (_, _, Consumed) -> raise (TypeError ("Variable " ^ name ^ " has already been consumed"))
       | Some (t, is_mut, Live) ->
-          let var_role = match t with | TRole (_, r) -> r | _ -> "Main" in
+          let var_role = match t.item with | TRole (_, r) -> r | _ -> "Main" in
           if var_role <> "Global" && var_role <> env.current_role && env.current_role <> "Poly" then
             raise (TypeError (Printf.sprintf "Cannot access variable %s belonging to role %s from role %s" name var_role env.current_role));
-          let new_vars = match t with
+          let new_vars = match t.item with
             | TRole _ when not (is_copy_type t) -> StringMap.add name (t, is_mut, Consumed) env.vars
             | _ -> env.vars
           in
-          t, { env with vars = new_vars }
+          t.item, { env with vars = new_vars }
       | None ->
           (match StringMap.find_opt name env.globals with
           | Some t ->
-              let var_role = match t with | TRole (_, r) -> r | _ -> "Global" in
+              let var_role = match t.item with | TRole (_, r) -> r | _ -> "Global" in
               if var_role <> "Global" && var_role <> env.current_role then
                 raise (TypeError (Printf.sprintf "Cannot access global %s belonging to role %s from role %s" name var_role env.current_role));
-              t, env
+              t.item, env
           | None -> raise (TypeError ("Undefined variable: " ^ name))))
   | EPathVar path ->
       let resolved_path =
@@ -383,7 +420,7 @@ let rec check_expr_impl env e expected_typ_opt =
       (match targs_opt with
       | Some targs ->
           (match StringMap.find_opt name env_clean.generic_items with
-          | Some (params, IFn f) ->
+          | Some (params, { item = IFn f; _ }) ->
               if List.length args <> List.length f.params then raise (TypeError ("Arity mismatch for " ^ name));
               if List.length targs <> List.length params then raise (TypeError ("Generic arity mismatch for " ^ name));
               let subst = List.fold_left2 (fun acc p t -> StringMap.add p t acc) StringMap.empty params targs in
@@ -396,14 +433,14 @@ let rec check_expr_impl env e expected_typ_opt =
               ) env_clean f.params args in
               let base_ret = match f.ret_typ with
                 | Some rt -> substitute_typ subst rt
-                | None -> TBase TUnit
+                | None -> { item = TBase TUnit; span = dummy_span }
               in
               let f_role = Option.value f.role ~default:env_clean.current_role in
               if f_role <> env_clean.current_role && f_role <> "global" then (
                 let ret_with_role = TRole (base_ret, f_role) in
                 ret_with_role, env_after_args
               ) else
-                let final_ret = if f_role = env_clean.current_role then base_ret else TRole (base_ret, f_role) in
+                let final_ret = if f_role = env_clean.current_role then base_ret.item else TRole (base_ret, f_role) in
                 final_ret, env_after_args
           | _ -> raise (TypeError ("Undefined generic function: " ^ name)))
       | None ->
@@ -418,18 +455,18 @@ let rec check_expr_impl env e expected_typ_opt =
               ) env_clean f.params args in
               let base_ret = match f.ret_typ with
                 | Some rt -> rt
-                | None -> TBase TUnit
+                | None -> { item = TBase TUnit; span = dummy_span }
               in
               let f_role = Option.value f.role ~default:env_clean.current_role in
               if f_role <> env_clean.current_role && f_role <> "global" then (
                 let ret_with_role = TRole (base_ret, f_role) in
                 ret_with_role, env_after_args
               ) else
-                let final_ret = if f_role = env_clean.current_role then base_ret else TRole (base_ret, f_role) in
+                let final_ret = if f_role = env_clean.current_role then base_ret.item else TRole (base_ret, f_role) in
                 final_ret, env_after_args
           | None ->
               (match StringMap.find_opt name env_clean.generic_items with
-              | Some (params, IFn f) ->
+              | Some (params, { item = IFn f; _ }) ->
                   if List.length args <> List.length f.params then raise (TypeError ("Arity mismatch for " ^ name));
                   (* Infer generic arguments! *)
                   let args_typed = List.map (fun arg_expr -> 
@@ -456,14 +493,14 @@ let rec check_expr_impl env e expected_typ_opt =
                   ) env_clean f.params args in
                   let base_ret = match f.ret_typ with
                     | Some rt -> substitute_typ subst rt
-                    | None -> TBase TUnit
+                    | None -> { item = TBase TUnit; span = dummy_span }
                   in
                   let f_role = Option.value f.role ~default:env_clean.current_role in
                   if f_role <> env_clean.current_role && f_role <> "global" then (
                     let ret_with_role = TRole (base_ret, f_role) in
                     ret_with_role, env_after_args
                   ) else
-                    let final_ret = if f_role = env_clean.current_role then base_ret else TRole (base_ret, f_role) in
+                    let final_ret = if f_role = env_clean.current_role then base_ret.item else TRole (base_ret, f_role) in
                     final_ret, env_after_args
               | _ -> raise (TypeError ("Undefined function: " ^ name)))))
   | EMethodCall (obj, method_name, args, resolved_name_ref) ->
@@ -481,7 +518,7 @@ let rec check_expr_impl env e expected_typ_opt =
       let (impl, _) = find_method env.impls in
       let mangled_name = impl.trait_name ^ "_" ^ (Ast.show_typ impl.for_typ |> String.map (function ' ' | '(' | ')' -> '_' | c -> c)) ^ "_" ^ method_name in
       resolved_name_ref := Some mangled_name;
-      check_expr env (ECall (mangled_name, obj :: args)) expected_typ_opt
+      check_expr_impl env { item = ECall (mangled_name, obj :: args); span = dummy_span } expected_typ_opt
   | EPathCall (path, args) ->
       let prefix = List.hd path in
       if StringMap.mem prefix env.enums then (
@@ -530,18 +567,18 @@ let rec check_expr_impl env e expected_typ_opt =
         ) else if resolved_path = ["std"; "fs"; "read_file"] then (
           if List.length args <> 1 then raise (TypeError "std::fs::read_file expects 1 argument (path: str)");
           let t_path, env_next = check_expr env (List.hd args) None in
-          if t_path <> TBase TStr then raise (TypeError "std::fs::read_file path must be a string");
+          if t_path <> { item = TBase TStr; span = dummy_span } then raise (TypeError "std::fs::read_file path must be a string");
           TBase TStr, env_next
         ) else if resolved_path = ["std"; "fs"; "write_file"] then (
           if List.length args <> 2 then raise (TypeError "std::fs::write_file expects 2 arguments (path: str, content: str)");
           let t_path, env1 = check_expr env (List.hd args) None in
           let t_content, env2 = check_expr env1 (List.nth args 1) None in
-          if t_path <> TBase TStr || t_content <> TBase TStr then raise (TypeError "std::fs::write_file arguments must be strings");
+          if t_path <> { item = TBase TStr; span = dummy_span } || t_content <> { item = TBase TStr; span = dummy_span } then raise (TypeError "std::fs::write_file arguments must be strings");
           TBase TBool, env2
         ) else if resolved_path = ["std"; "fs"; "file_exists"] then (
           if List.length args <> 1 then raise (TypeError "std::fs::file_exists expects 1 argument (path: str)");
           let t_path, env_next = check_expr env (List.hd args) None in
-          if t_path <> TBase TStr then raise (TypeError "std::fs::file_exists path must be a string");
+          if t_path <> { item = TBase TStr; span = dummy_span } then raise (TypeError "std::fs::file_exists path must be a string");
           TBase TBool, env_next
         ) else if resolved_path = ["std"; "process"; "exit"] then (
           if List.length args <> 1 then raise (TypeError "std::process::exit expects 1 argument (code: int)");
@@ -558,32 +595,32 @@ let rec check_expr_impl env e expected_typ_opt =
           TBase TU64, env
         ) else if resolved_path = ["std"; "process"; "args"] then (
           if List.length args <> 0 then raise (TypeError "std::process::args expects 0 arguments");
-          TArray (TBase TStr), env
+          TArray ({ item = TBase TStr; span = dummy_span }), env
         ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "string" then (
           let fn_name = List.nth resolved_path 2 in
           match fn_name with
           | "len" ->
               if List.length args <> 1 then raise (TypeError "std::string::len expects 1 argument");
               let t, env1 = check_expr env (List.hd args) None in
-              if unwrap_role t <> TBase TStr then raise (TypeError "std::string::len argument must be a string");
+              if unwrap_role t <> { item = TBase TStr; span = dummy_span } then raise (TypeError "std::string::len argument must be a string");
               TBase TI64, env1
           | "concat" | "starts_with" | "ends_with" ->
               if List.length args <> 2 then raise (TypeError ("std::string::" ^ fn_name ^ " expects 2 arguments"));
               let t1, env1 = check_expr env (List.hd args) None in
               let t2, env2 = check_expr env1 (List.nth args 1) None in
-              if unwrap_role t1 <> TBase TStr || unwrap_role t2 <> TBase TStr then raise (TypeError ("std::string::" ^ fn_name ^ " arguments must be strings"));
+              if unwrap_role t1 <> { item = TBase TStr; span = dummy_span } || unwrap_role t2 <> { item = TBase TStr; span = dummy_span } then raise (TypeError ("std::string::" ^ fn_name ^ " arguments must be strings"));
               (if fn_name = "concat" then TBase TStr else TBase TBool), env2
           | "to_uppercase" | "to_lowercase" | "trim" ->
               if List.length args <> 1 then raise (TypeError ("std::string::" ^ fn_name ^ " expects 1 argument"));
               let t, env1 = check_expr env (List.hd args) None in
-              if unwrap_role t <> TBase TStr then raise (TypeError ("std::string::" ^ fn_name ^ " argument must be a string"));
+              if unwrap_role t <> { item = TBase TStr; span = dummy_span } then raise (TypeError ("std::string::" ^ fn_name ^ " argument must be a string"));
               TBase TStr, env1
           | "replace" ->
               if List.length args <> 3 then raise (TypeError "std::string::replace expects 3 arguments");
               let t1, env1 = check_expr env (List.hd args) None in
               let t2, env2 = check_expr env1 (List.nth args 1) None in
               let t3, env3 = check_expr env2 (List.nth args 2) None in
-              if unwrap_role t1 <> TBase TStr || unwrap_role t2 <> TBase TStr || unwrap_role t3 <> TBase TStr then
+              if unwrap_role t1 <> { item = TBase TStr; span = dummy_span } || unwrap_role t2 <> { item = TBase TStr; span = dummy_span } || unwrap_role t3 <> { item = TBase TStr; span = dummy_span } then
                 raise (TypeError "std::string::replace arguments must be strings");
               TBase TStr, env3
           | "substring" ->
@@ -591,23 +628,23 @@ let rec check_expr_impl env e expected_typ_opt =
               let t1, env1 = check_expr env (List.hd args) None in
               let t2, env2 = check_expr env1 (List.nth args 1) None in
               let t3, env3 = check_expr env2 (List.nth args 2) None in
-              if unwrap_role t1 <> TBase TStr || not (is_int_type t2) || not (is_int_type t3) then
+              if unwrap_role t1 <> { item = TBase TStr; span = dummy_span } || not (is_int_type t2) || not (is_int_type t3) then
                 raise (TypeError "std::string::substring requires (str, int, int)");
               TBase TStr, env3
           | "char_at" ->
               if List.length args <> 2 then raise (TypeError "std::string::char_at expects 2 arguments");
               let t1, env1 = check_expr env (List.hd args) None in
               let t2, env2 = check_expr env1 (List.nth args 1) None in
-              if unwrap_role t1 <> TBase TStr || not (is_int_type t2) then
+              if unwrap_role t1 <> { item = TBase TStr; span = dummy_span } || not (is_int_type t2) then
                 raise (TypeError "std::string::char_at requires (str, int)");
               TBase TStr, env2
           | "split" ->
               if List.length args <> 2 then raise (TypeError "std::string::split expects 2 arguments");
               let t1, env1 = check_expr env (List.hd args) None in
               let t2, env2 = check_expr env1 (List.nth args 1) None in
-              if unwrap_role t1 <> TBase TStr || unwrap_role t2 <> TBase TStr then
+              if unwrap_role t1 <> { item = TBase TStr; span = dummy_span } || unwrap_role t2 <> { item = TBase TStr; span = dummy_span } then
                 raise (TypeError "std::string::split arguments must be strings");
-              TArray (TBase TStr), env2
+              TArray ({ item = TBase TStr; span = dummy_span }), env2
           | _ -> raise (TypeError ("Undefined std::string function: " ^ fn_name))
         ) else if List.length resolved_path = 3 && List.nth resolved_path 0 = "std" && List.nth resolved_path 1 = "conv" then (
           let fn_name = List.nth resolved_path 2 in
@@ -615,13 +652,13 @@ let rec check_expr_impl env e expected_typ_opt =
           | "parse_int" ->
               if List.length args <> 1 then raise (TypeError "std::conv::parse_int expects 1 argument");
               let t, env1 = check_expr env (List.hd args) None in
-              if unwrap_role t <> TBase TStr then raise (TypeError "std::conv::parse_int argument must be a string");
-              TResult (TBase TI64, TBase TStr), env1
+              if unwrap_role t <> { item = TBase TStr; span = dummy_span } then raise (TypeError "std::conv::parse_int argument must be a string");
+              TResult ({ item = TBase TI64; span = dummy_span }, { item = TBase TStr; span = dummy_span }), env1
           | "parse_bool" ->
               if List.length args <> 1 then raise (TypeError "std::conv::parse_bool expects 1 argument");
               let t, env1 = check_expr env (List.hd args) None in
-              if unwrap_role t <> TBase TStr then raise (TypeError "std::conv::parse_bool argument must be a string");
-              TResult (TBase TBool, TBase TStr), env1
+              if unwrap_role t <> { item = TBase TStr; span = dummy_span } then raise (TypeError "std::conv::parse_bool argument must be a string");
+              TResult ({ item = TBase TBool; span = dummy_span }, { item = TBase TStr; span = dummy_span }), env1
           | "to_str" ->
               if List.length args <> 1 then raise (TypeError "std::conv::to_str expects 1 argument");
               let t, env1 = check_expr env (List.hd args) None in
@@ -635,33 +672,33 @@ let rec check_expr_impl env e expected_typ_opt =
               if List.length args <> 1 then raise (TypeError ("std::collections::" ^ fn_name ^ " expects 1 argument"));
               let t, env1 = check_expr env (List.hd args) None in
               (match unwrap_role t with
-              | TArray _ ->
+              | { item = TArray _; _ } ->
                   if fn_name = "len" then
                     let env_live = match List.hd args with
-                      | EVar name -> (match StringMap.find_opt name env1.vars with Some (vt, mut, _) -> { env1 with vars = StringMap.add name (vt, mut, Live) env1.vars } | None -> env1)
+                      | { item = EVar name; _ } -> (match StringMap.find_opt name env1.vars with Some (vt, mut, _) -> { env1 with vars = StringMap.add name (vt, mut, Live) env1.vars } | None -> env1)
                       | _ -> env1
                     in
                     TBase TI64, env_live
-                  else t, env1
+                  else t.item, env1
               | _ -> raise (TypeError ("std::collections::" ^ fn_name ^ " argument must be an array")))
           | "push" ->
               if List.length args <> 2 then raise (TypeError "std::collections::push expects 2 arguments");
               let t_arr, env1 = check_expr env (List.hd args) None in
               (match unwrap_role t_arr with
-              | TArray elem_t ->
+              | { item = TArray elem_t; _ } ->
                   let t_elem, env2 = check_expr env1 (List.nth args 1) (Some elem_t) in
                   if not (types_compatible elem_t t_elem) then raise (TypeError "Type mismatch in std::collections::push");
-                  t_arr, env2
+                  t_arr.item, env2
               | _ -> raise (TypeError "std::collections::push first argument must be an array"))
           | "contains" ->
               if List.length args <> 2 then raise (TypeError "std::collections::contains expects 2 arguments");
               let t_arr, env1 = check_expr env (List.hd args) None in
               (match unwrap_role t_arr with
-              | TArray elem_t ->
+              | { item = TArray elem_t; _ } ->
                   let t_elem, env2 = check_expr env1 (List.nth args 1) (Some elem_t) in
                   if not (types_compatible elem_t t_elem) then raise (TypeError "Type mismatch in std::collections::contains");
                   let env_live = match List.hd args with
-                    | EVar name -> (match StringMap.find_opt name env2.vars with Some (vt, mut, _) -> { env2 with vars = StringMap.add name (vt, mut, Live) env2.vars } | None -> env2)
+                    | { item = EVar name; _ } -> (match StringMap.find_opt name env2.vars with Some (vt, mut, _) -> { env2 with vars = StringMap.add name (vt, mut, Live) env2.vars } | None -> env2)
                     | _ -> env2
                   in
                   TBase TBool, env_live
@@ -673,22 +710,24 @@ let rec check_expr_impl env e expected_typ_opt =
           | "abs" | "sin" | "cos" | "tan" | "sqrt" | "log" ->
               if List.length args <> 1 then raise (TypeError ("std::math::" ^ fn_name ^ " expects 1 argument"));
               let t_arg, env_next = check_expr env (List.hd args) None in
-              if not (is_int_type t_arg) then raise (TypeError ("std::math::" ^ fn_name ^ " argument must be numeric"));
-              TI64 |> fun b -> TBase b, env_next
+              if not (is_numeric_type_t t_arg) then raise (TypeError ("std::math::" ^ fn_name ^ " argument must be numeric"));
+              let ret = if is_float_type_t t_arg then t_arg.item else TBase TF64 in
+              ret, env_next
           | "min" | "max" | "pow" ->
               if List.length args <> 2 then raise (TypeError ("std::math::" ^ fn_name ^ " expects 2 arguments"));
               let t1, env1 = check_expr env (List.hd args) None in
               let t2, env2 = check_expr env1 (List.nth args 1) None in
-              if not (is_int_type t1) || not (is_int_type t2) then raise (TypeError ("std::math::" ^ fn_name ^ " arguments must be numeric"));
-              TI64 |> fun b -> TBase b, env2
+              if not (is_numeric_type_t t1) || not (is_numeric_type_t t2) then raise (TypeError ("std::math::" ^ fn_name ^ " arguments must be numeric"));
+              let ret = if is_float_type_t t1 then t1.item else if is_float_type_t t2 then t2.item else TBase TF64 in
+              ret, env2
           | "clamp" ->
               if List.length args <> 3 then raise (TypeError "std::math::clamp expects 3 arguments");
               let t1, env1 = check_expr env (List.hd args) None in
               let t2, env2 = check_expr env1 (List.nth args 1) None in
               let t3, env3 = check_expr env2 (List.nth args 2) None in
-              if not (is_int_type t1) || not (is_int_type t2) || not (is_int_type t3) then
+              if not (is_numeric_type_t t1) || not (is_numeric_type_t t2) || not (is_numeric_type_t t3) then
                 raise (TypeError "std::math::clamp arguments must be numeric");
-              TBase TI64, env3
+              t1.item, env3
           | _ -> raise (TypeError ("Undefined std::math function: " ^ fn_name))
         ) else if resolved_path = ["std"; "hw"; "bind_interrupt"] then (
           if List.length args <> 2 then raise (TypeError ("bind_interrupt expects 2 arguments"));
@@ -696,7 +735,7 @@ let rec check_expr_impl env e expected_typ_opt =
           if not (is_int_type t_irq) then raise (TypeError "IRQ number must be an integer");
           let handler_arg = List.nth args 1 in
           (match handler_arg with
-           | EVar name ->
+           | { item = EVar name; _ } ->
                (match StringMap.find_opt name env_next.funcs with
                 | Some fn ->
                     let expected_role = "ISR" in
@@ -717,16 +756,16 @@ let rec check_expr_impl env e expected_typ_opt =
         | Some fn ->
             let temp_name = String.concat "::" resolved_path in
             let env_with_fn = { env with funcs = StringMap.add temp_name fn env.funcs } in
-            check_expr env_with_fn (ECall (temp_name, args)) expected_typ_opt
+            check_expr_impl env_with_fn { item = ECall (temp_name, args); span = dummy_span } expected_typ_opt
         | None -> raise (TypeError ("Function not found in module: " ^ func_name))
       )
   | EUnOp (Not, e) ->
-      let t, env1 = check_expr env e (Some (TBase TBool)) in
-      if t = TBase TBool then TBase TBool, env1
+      let t, env1 = check_expr env e (Some ({ item = TBase TBool; span = dummy_span })) in
+      if t = { item = TBase TBool; span = dummy_span } then TBase TBool, env1
       else raise (TypeError "Logical NOT requires a boolean type")
   | EUnOp (Neg, e) ->
       let t, env1 = check_expr env e expected_typ_opt in
-      if is_int_type t then t, env1
+      if is_int_type t then t.item, env1
       else raise (TypeError "Negation requires an integer type")
   | EBinOp (e1, op, e2) ->
       let expected_e1 = match op with
@@ -738,13 +777,13 @@ let rec check_expr_impl env e expected_typ_opt =
       if not (types_compatible t1 t2) then raise (TypeError "Binary operator operands must have compatible types");
       (match op with
       | Add | Sub | Mul | Div | Shl | Shr | BitAnd | BitOr ->
-          if is_int_type t1 then t1, env2
-          else raise (TypeError "Arithmetic/Bitwise operators require integer types")
+          if is_numeric_type_t t1 then t1.item, env2
+          else raise (TypeError "Arithmetic/Bitwise operators require numeric types")
       | Eq | Neq ->
           TBase TBool, env2
       | Lt | Gt | Lte | Gte ->
-          if is_int_type t1 then TBase TBool, env2
-          else raise (TypeError "Comparison operators require integer types")
+          if is_numeric_type_t t1 then TBase TBool, env2
+          else raise (TypeError "Comparison operators require numeric types")
       | And | Or ->
           if is_bool_type t1 && is_bool_type t2 then TBase TBool, env2
           else raise (TypeError "Logical operators require boolean types"))
@@ -765,28 +804,28 @@ let rec check_expr_impl env e expected_typ_opt =
         TBase TStr, env
   | EOk (e, _) ->
       let expected_ok = match expected_typ_opt with
-        | Some (TResult (t_ok, _)) -> Some t_ok
+        | Some { item = TResult (t_ok, _); _ } -> Some t_ok
         | _ -> None
       in
       let t, env1 = check_expr env e expected_ok in
       let err_t = match expected_typ_opt with
-        | Some (TResult (_, t_err)) -> t_err
-        | _ -> TBase (TCustom "_")
+        | Some { item = TResult (_, t_err); _ } -> t_err
+        | _ -> { item = TBase (TCustom "_"); span = dummy_span }
       in
       TResult (t, err_t), env1
   | EErr (e, _) ->
       let expected_err = match expected_typ_opt with
-        | Some (TResult (_, t_err)) -> Some t_err
+        | Some { item = TResult (_, t_err); _ } -> Some t_err
         | _ -> None
       in
       let t, env1 = check_expr env e expected_err in
       let ok_t = match expected_typ_opt with
-        | Some (TResult (t_ok, _)) -> t_ok
-        | _ -> TBase (TCustom "_")
+        | Some { item = TResult (t_ok, _); _ } -> t_ok
+        | _ -> { item = TBase (TCustom "_"); span = dummy_span }
       in
       TResult (ok_t, t), env1
   | EIf (cond, thn, els) ->
-      let t_cond, env1 = check_expr env cond (Some (TBase TBool)) in
+      let t_cond, env1 = check_expr env cond (Some ({ item = TBase TBool; span = dummy_span })) in
       if not (is_bool_type t_cond) then raise (TypeError "if condition must be bool");
       let env_thn, t_thn = check_block env1 thn in
       let len_old = List.length env1.trace in
@@ -798,21 +837,23 @@ let rec check_expr_impl env e expected_typ_opt =
           let trace_els = drop len_old env_els.trace in
           if trace_thn <> trace_els then
             raise (TypeError "Asymmetric choreography: 'if' and 'else' branches must have identical transfer footprints");
-          if not (types_compatible (Option.value t_thn ~default:(TBase TUnit)) (Option.value t_els ~default:(TBase TUnit))) then 
-            raise (TypeError "if and else branches must have same return type");
-          Option.value t_thn ~default:(TBase TUnit), { env_els with vars = env_thn.vars }
+          if not (types_compatible (Option.value t_thn ~default:({ item = TBase TUnit; span = dummy_span })) (Option.value t_els ~default:({ item = TBase TUnit; span = dummy_span }))) then 
+                raise (TypeError "if and else branches must have same return type");
+          (Option.value t_thn ~default:({ item = TBase TUnit; span = dummy_span })).item, { env_els with vars = env_thn.vars }
       | None ->
           if trace_thn <> [] then
             raise (TypeError "Asymmetric choreography: 'if' without 'else' cannot contain 'transfer' operations");
-          if t_thn <> None then raise (TypeError "if without else cannot return a value");
-          Option.value t_thn ~default:(TBase TUnit), env_thn)
+          (match t_thn with
+          | Some t when (unwrap_role t).item <> TBase TUnit -> raise (TypeError "if without else cannot return a value")
+          | _ -> ());
+          TBase TUnit, env_thn)
   | EStruct (name, fields, _) ->
       let targs_opt = env.active_targs in
       let env_clean = { env with active_targs = None } in
       (match targs_opt with
       | Some targs ->
           (match StringMap.find_opt name env_clean.generic_items with
-          | Some (params, IStruct s_decl) ->
+          | Some (params, { item = IStruct s_decl; _ }) ->
               if List.length targs <> List.length params then raise (TypeError ("Generic arity mismatch for struct " ^ name));
               let subst = List.fold_left2 (fun acc p t -> StringMap.add p t acc) StringMap.empty params targs in
               if List.length fields <> List.length s_decl.fields then
@@ -848,7 +889,7 @@ let rec check_expr_impl env e expected_typ_opt =
               TBase (TCustom name), env_final
           | None ->
               (match StringMap.find_opt name env_clean.generic_items with
-              | Some (params, IStruct s_decl) ->
+              | Some (params, { item = IStruct s_decl; _ }) ->
                   if List.length fields <> List.length s_decl.fields then
                     raise (TypeError ("Arity mismatch for struct " ^ name));
                   let fields_typed = List.map (fun (f_name, f_expr) -> 
@@ -884,34 +925,34 @@ let rec check_expr_impl env e expected_typ_opt =
               | _ -> raise (TypeError ("Undeclared struct: " ^ name)))))
   | EField (e, field_name) ->
       let t_e, env1 = check_expr env e None in
-      let env_res = match e with
+      let env_res = match e.item with
         | EVar name ->
             (match StringMap.find_opt name env1.vars with
              | Some (vt, mut, _) -> { env1 with vars = StringMap.add name (vt, mut, Live) env1.vars }
              | None -> env1)
         | _ -> env1
       in
-      let base = match t_e with TRole (inner, _) -> inner | _ -> t_e in
-      (match base with
+      let base = match t_e.item with TRole (inner, _) -> inner | _ -> t_e in
+      (match base.item with
       | TBase (TGenericApp (targs, TCustom name)) ->
           (match StringMap.find_opt name env_res.generic_items with
-          | Some (params, IStruct s_decl) ->
+          | Some (params, { item = IStruct s_decl; _ }) ->
               let subst = List.fold_left2 (fun acc p t -> StringMap.add p t acc) StringMap.empty params targs in
               (match List.find_opt (fun (f : Ast.field) -> f.name = field_name) s_decl.fields with
-              | Some f_decl -> substitute_typ subst f_decl.typ, env_res
+              | Some f_decl -> (substitute_typ subst f_decl.typ).item, env_res
               | None -> raise (TypeError ("Unknown field " ^ field_name ^ " on struct " ^ name)))
           | _ -> raise (TypeError ("Unknown generic struct: " ^ name)))
       | TBase (TCustom name) ->
           (match StringMap.find_opt name env_res.structs with
           | Some s_decl ->
               (match List.find_opt (fun (f : Ast.field) -> f.name = field_name) s_decl.fields with
-              | Some f_decl -> f_decl.typ, env_res
+              | Some f_decl -> f_decl.typ.item, env_res
               | None -> raise (TypeError ("Unknown field " ^ field_name ^ " on struct " ^ name)))
           | None -> raise (TypeError ("Unknown struct: " ^ name)))
       | TTuple typ_list ->
           (try
             let idx = int_of_string field_name in
-            List.nth typ_list idx, env1
+            (List.nth typ_list idx).item, env1
           with _ -> raise (TypeError ("Invalid tuple index: " ^ field_name)))
       | _ -> raise (TypeError "Field access on non-struct type"))
   | EMatch (e, arms) ->
@@ -923,20 +964,23 @@ let rec check_expr_impl env e expected_typ_opt =
       ) arms in
       let first_t, first_env = List.hd arm_results in
       List.iter (fun (t, _) -> if not (types_compatible t first_t) then raise (TypeError "Match arms have different types")) arm_results;
-      first_t, first_env
+      first_t.item, first_env
   | ECast (e, t) ->
       let t_e, env1 = check_expr env e None in
-      if not (is_int_type t_e || is_bool_type t_e) || not (is_int_type t || is_bool_type t) then
-        raise (TypeError "Can only cast between numeric/boolean types");
-      t, env1
+      let base_te = (unwrap_role t_e).item in
+      let base_t = (unwrap_role t).item in
+      if not (is_numeric_type_t { item = base_te; span = dummy_span } || is_bool_type { item = base_te; span = dummy_span } || base_te = TBase TChar || base_te = TBase TStr) ||
+         not (is_numeric_type_t { item = base_t; span = dummy_span } || is_bool_type { item = base_t; span = dummy_span } || base_t = TBase TChar || base_t = TBase TStr) then
+        raise (TypeError "Can only cast between numeric/boolean/char/string types");
+      t.item, env1
   | EGenericApp (targs, e) ->
       let env_with_targs = { env with active_targs = Some targs } in
       let t_inner, env_next = check_expr env_with_targs e expected_typ_opt in
-      t_inner, { env_next with active_targs = env.active_targs }
+      t_inner.item, { env_next with active_targs = env.active_targs }
   | EArray elems ->
       let expected_elem_t = match expected_typ_opt with
-        | Some (TArray t) -> Some t
-        | Some (TRole (TArray t, _)) -> Some t
+        | Some { item = TArray t; _ } -> Some t
+        | Some { item = TRole ({ item = TArray t; _ }, _); _ } -> Some t
         | _ -> None
       in
       if elems = [] then (
@@ -954,8 +998,8 @@ let rec check_expr_impl env e expected_typ_opt =
       )
   | ETuple elems ->
       let expected_elem_types = match expected_typ_opt with
-        | Some (TTuple ts) -> Some ts
-        | Some (TRole (TTuple ts, _)) -> Some ts
+        | Some { item = TTuple ts; _ } -> Some ts
+        | Some { item = TRole ({ item = TTuple ts; _ }, _); _ } -> Some ts
         | _ -> None
       in
       let env_curr = ref env in
@@ -973,26 +1017,27 @@ let rec check_expr_impl env e expected_typ_opt =
       let t_arr, env2 = check_expr env arr None in
       let t_i, env3 = check_expr env2 i None in
       if not (is_int_type t_i) then raise (TypeError "Array index must be an integer");
-      let base_arr_t = match t_arr with | TRole (inner, _) -> inner | _ -> t_arr in
-      (match base_arr_t with
-      | TArray t_elem -> t_elem, env3
-      | _ -> raise (TypeError "Cannot index non-array type"))
+      let base_arr_t = match t_arr.item with | TRole (inner, _) -> inner | _ -> t_arr in
+      (match base_arr_t.item with
+      | TArray t_elem -> t_elem.item, env3
+      | TBase TStr -> TBase TChar, env3
+      | _ -> raise (TypeError "Cannot index non-array/non-string type"))
   | ETransfer (e, role) ->
       if not (StringMap.mem role env.roles) then raise (TypeError ("Undeclared role in transfer: " ^ role));
       let t_e, env1 = check_expr env e None in
-      let base_t = match t_e with
+      let base_t = match t_e.item with
         | TRole (inner, _) -> inner
         | _ -> t_e
       in
       let env_with_trace = { env1 with trace = env1.trace @ [(role, base_t)] } in
       if role = "Compiler" then
-        (base_t, env_with_trace)
+        (base_t.item, env_with_trace)
       else
         (TRole (base_t, role), env_with_trace)
-  | EDup (_, e) -> check_expr env e None
+  | EDup (_, e) -> let t, env' = check_expr env e None in t.item, env'
   | ETyped (inner, t) ->
       let _, env' = check_expr env inner (Some t) in
-      (t, env')
+      (t.item, env')
   | ENetSend (_, inner) ->
       let _, env' = check_expr env inner None in
       (TBase TUnit, env')
@@ -1005,15 +1050,16 @@ let rec check_expr_impl env e expected_typ_opt =
       let _, env' = check_expr env inner None in
       (TBase TStr, env')
   | EComptime inner ->
-      check_expr env inner expected_typ_opt
+      let t, env' = check_expr env inner expected_typ_opt in t.item, env'
 
 and check_expr env e expected_typ_opt =
   let (t, env') = check_expr_impl env e expected_typ_opt in
-  ExprMap.replace typed_ast_map e t;
-  (t, env')
+  let typ = { item = t; span = e.span } in
+  ExprMap.replace typed_ast_map e typ;
+  (typ, env')
 
 and check_stmt env stmt =
-  match stmt with
+  match stmt.item with
   | SDecl { kind; pat; typ; init } ->
       let t_init, env1 = check_expr env init typ in
       let typ_with_role = match typ with
@@ -1021,20 +1067,20 @@ and check_stmt env stmt =
         | None -> None
       in
       (match typ_with_role with
-      | Some t -> if not (types_compatible t t_init) then raise (TypeError ("Type mismatch in declaration"))
+      | Some t -> if not (types_compatible t t_init) then raise (TypeError (Printf.sprintf "Type mismatch in declaration: expected %s, got %s" (Ast.show_typ t) (Ast.show_typ t_init)))
       | None -> ());
       let t_final = Option.value typ_with_role ~default:t_init in
       let t_final = add_role_if_missing t_final env1.current_role in
       if kind = VConst then (
          (match init with
-         | ELit _ -> ()
+         | { item = ELit _; _ } -> ()
          | _ -> raise (TypeError ("const variables must be initialized with a constant literal")))
       );
       let is_mut = (kind = VVar) in
       bind_pat env1 pat t_final is_mut
   | SAssign (lhs, e) ->
       (match lhs with
-      | EVar name ->
+      | { item = EVar name; _ } ->
           (match StringMap.find_opt name env.vars with
           | Some (var_t, true, Live) ->
               let t_e, env1 = check_expr env e (Some var_t) in
@@ -1046,21 +1092,21 @@ and check_stmt env stmt =
               (match StringMap.find_opt name env.globals with
               | Some t_var ->
                   let t_e, env1 = check_expr env e (Some t_var) in
-                  let global_role = match t_var with | TRole (_, r) -> r | _ -> "Global" in
+                  let global_role = match t_var.item with | TRole (_, r) -> r | _ -> "Global" in
                   if global_role <> "Global" && global_role <> env1.current_role then raise (TypeError ("Cannot access global " ^ name ^ " from role " ^ env1.current_role));
                   if not (types_compatible t_var t_e) then raise (TypeError "Assignment type mismatch");
                   env1
               | None -> raise (TypeError ("Undefined variable in assignment: " ^ name))))
-      | EIndex (arr, i) ->
+      | { item = EIndex (arr, i); _ } ->
           let t_arr, env_arr = check_expr env arr None in
           let t_i, env_i = check_expr env_arr i None in
           if not (is_int_type t_i) then raise (TypeError "Array index must be an integer");
-          let base_arr_t = match t_arr with | TRole (inner, _) -> inner | _ -> t_arr in
-          (match base_arr_t with
+          let base_arr_t = match t_arr.item with | TRole (inner, _) -> inner | _ -> t_arr in
+          (match base_arr_t.item with
           | TArray t_elem ->
               let t_e, env_final = check_expr env_i e (Some t_elem) in
               if not (types_compatible t_elem t_e) then raise (TypeError "Array assignment type mismatch");
-              let env_res = match arr with
+              let env_res = match arr.item with
                 | EVar name ->
                     (match StringMap.find_opt name env_final.vars with
                     | Some (_, is_mut, _) ->
@@ -1083,8 +1129,8 @@ and check_stmt env stmt =
   | SFor (id, e, b) ->
       let t_e, env1 = check_expr env e None in
       let elem_t = match unwrap_role t_e with
-        | TArray inner -> inner
-        | _ -> TBase TU8 (* fallback for non-array iterables *)
+        | { item = TArray inner; _ } -> inner
+        | _ -> { item = TBase TU8; span = dummy_span } (* fallback for non-array iterables *)
       in
       let env_for = { env1 with vars = StringMap.add id (elem_t, false, Live) env1.vars } in
       let env2, _ = check_block env_for b in
@@ -1101,7 +1147,7 @@ and check_stmt env stmt =
       | None, Some _ -> raise (TypeError "Function must return a value")
       in
       StringMap.iter (fun name (t, _, state) ->
-        match t with
+        match t.item with
         | TRole _ when state = Live && not (is_copy_type t) -> 
             raise (TypeError ("Cannot return early with unconsumed linear resource: " ^ name))
         | _ -> ()
@@ -1131,7 +1177,7 @@ let check_fn_decl env (fn: Ast.fn_decl) =
    | Some b -> 
        let env_final, _ = check_block local_env b in
        StringMap.iter (fun name (t, _, state) ->
-         match t with
+         match t.item with
          | TRole _ when state = Live && not (is_copy_type t) -> 
              raise (TypeError ("Function " ^ fn.name ^ " ends with unconsumed linear resource: " ^ name))
          | _ -> ()
@@ -1140,7 +1186,7 @@ let check_fn_decl env (fn: Ast.fn_decl) =
   { env with funcs = StringMap.add fn.name fn env.funcs }
 
 let rec eval_const (env_iota: Int64.t option) (e: Ast.expr) : Int64.t =
-  match e with
+  match e.item with
   | ELit (LInt (v, _)) -> v
   | EVar "iota" | EPathVar ["iota"] -> 
       (match env_iota with
@@ -1163,20 +1209,20 @@ let rec eval_const (env_iota: Int64.t option) (e: Ast.expr) : Int64.t =
   | _ -> raise (TypeError "Expression is not a compile-time constant")
 
 let rec check_item env item =
-  match item with
+  match item.item with
   | IFn f -> check_fn_decl env f
   | IEnum e ->
-      let iota_env = { env with vars = StringMap.add "iota" (TRole (TBase TU64, "Global"), false, Live) env.vars } in
-      let _, _ = check_expr iota_env e.iota_expr (Some (TBase TU64)) in
+      let iota_env = { env with vars = StringMap.add "iota" ({ item = TRole ({ item = TBase TU64; span = dummy_span }, "Global"); span = dummy_span }, false, Live) env.vars } in
+      let _, _ = check_expr iota_env e.iota_expr (Some { item = TBase TU64; span = dummy_span }) in
       let current_iota = ref 0L in
       List.iter (fun (m: Ast.enum_member) ->
         let computed = match m.override with
         | Some (IotaOverride, exp_val) ->
-            let _, _ = check_expr iota_env exp_val (Some (TBase TU64)) in
+            let _, _ = check_expr iota_env exp_val (Some { item = TBase TU64; span = dummy_span }) in
             current_iota := eval_const (Some !current_iota) exp_val;
             eval_const (Some !current_iota) e.iota_expr
         | Some (ValueOverride, exp_val) ->
-            let _, _ = check_expr iota_env exp_val (Some (TBase e.base_typ)) in
+            let _, _ = check_expr iota_env exp_val (Some { item = TBase e.base_typ; span = dummy_span }) in
             eval_const (Some !current_iota) exp_val
         | None ->
             eval_const (Some !current_iota) e.iota_expr
@@ -1192,7 +1238,7 @@ let rec check_item env item =
       if not (types_compatible expected_t t_init) then raise (TypeError ("Type mismatch in global " ^ name));
       { env with globals = StringMap.add name expected_t env.globals }
   | IGeneric (params, i) ->
-      let name = match i with
+      let name = match i.item with
       | IFn f -> f.name
       | IStruct s -> s.name
       | IEnum e -> e.name
@@ -1203,7 +1249,7 @@ let rec check_item env item =
   | IRole r ->
       List.iter (fun (k, e) ->
         let _, _ = check_expr env e None in
-        match e with
+        match e.item with
         | ELit _ -> ()
         | _ -> raise (TypeError ("Role property " ^ k ^ " must be a constant literal"))
       ) r.properties;
@@ -1228,7 +1274,7 @@ let rec check_item env item =
       let inx = open_in mod_path in
       let lexbuf = Lexing.from_channel inx in
       lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
-      let prog = try Parser.program Lexer.read lexbuf with
+      let prog = try Parser.parse_program Lexer.read lexbuf with
         | _ -> close_in inx; raise (TypeError ("Failed to parse module " ^ m.name))
       in
       close_in inx;
@@ -1251,7 +1297,7 @@ and check_program_inner env prog =
             let inx = open_in mod_path in
             let lexbuf = Lexing.from_channel inx in
             lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
-            let parsed_prog = try Parser.program Lexer.read lexbuf with
+            let parsed_prog = try Parser.parse_program Lexer.read lexbuf with
               | _ -> close_in inx; raise (TypeError ("Failed to parse imported module " ^ mod_name))
             in
             close_in inx;

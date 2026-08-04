@@ -1,5 +1,5 @@
 {
-open Parser
+open Token
 exception SyntaxError of string
 }
 
@@ -8,6 +8,7 @@ let newline = '\n'
 let digit = ['0'-'9']
 let letter = ['a'-'z' 'A'-'Z' '_']
 let ident = letter (letter | digit)*
+let float_lit = digit+ '.' digit* | '.' digit+
 
 rule read = parse
   | white { read lexbuf }
@@ -44,10 +45,11 @@ rule read = parse
   | "sizeof" { SIZEOF }
   | "typeof" { TYPEOF }
   | "_" { UNDERSCORE }
-  | "u8" { U8 } | "u16" { U16 } | "u32" { U32 } | "u64" { U64 }
+  | "u8" { U8 } | "u16" { U16 } | "u32" { U32 } | "u64" { U64 } | "u128" { U128 }
   | "usize" { USIZE }
   | "isize" { ISIZE }
-  | "i8" { I8 } | "i16" { I16 } | "i32" { I32 } | "i64" { I64 }
+  | "i8" { I8 } | "i16" { I16 } | "i32" { I32 } | "i64" { I64 } | "i128" { I128 }
+  | "f16" { F16 } | "f32" { F32 } | "f64" { F64 } | "f128" { F128 }
   | "bool" { BOOL } | "str" { STR } | "char" { CHAR }
   | "true" { BOOL_VAL true }
   | "false" { BOOL_VAL false }
@@ -88,6 +90,7 @@ rule read = parse
   | "@" { AT }
   | "@=" { AT_EQ }
   | "$=" { DOLLAR_EQ }
+  | float_lit as f { FLOAT (float_of_string f) }
   | digit+ as n { INT (Int64.of_string n) }
   | '"' { read_string (Buffer.create 17) lexbuf }
   | "f\"" { read_fstring (Buffer.create 17) lexbuf }
@@ -105,6 +108,10 @@ and read_string buf = parse
   | '\\' 'n'  { Buffer.add_char buf '\n'; read_string buf lexbuf }
   | '\\' 'r'  { Buffer.add_char buf '\r'; read_string buf lexbuf }
   | '\\' 't'  { Buffer.add_char buf '\t'; read_string buf lexbuf }
+  | '\\' 'e'  { Buffer.add_char buf '\027'; read_string buf lexbuf }
+  | '\\' 'x' ['0'-'9' 'a'-'f' 'A'-'F'] ['0'-'9' 'a'-'f' 'A'-'F'] as hex
+      { let code = int_of_string ("0x" ^ String.sub hex 2 2) in
+        Buffer.add_char buf (Char.chr code); read_string buf lexbuf }
   | [^ '"' '\\']+
     { Buffer.add_string buf (Lexing.lexeme lexbuf);
       read_string buf lexbuf

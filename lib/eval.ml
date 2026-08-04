@@ -3,6 +3,7 @@ module StringMap = Map.Make(String)
 
 type value =
   | VInt of int64
+  | VFloat of float
   | VBool of bool
   | VStr of string
   | VChar of char
@@ -54,6 +55,9 @@ let replace_string s from_str to_str =
 let rec print_val oc is_nl arg =
   (match arg with
   | VInt i -> if is_nl then Printf.fprintf oc "%Ld\n" i else Printf.fprintf oc "%Ld" i
+  | VFloat f ->
+      let s = if Float.is_integer f then Printf.sprintf "%.1f" f else Printf.sprintf "%g" f in
+      if is_nl then Printf.fprintf oc "%s\n" s else Printf.fprintf oc "%s" s
   | VBool b -> if is_nl then Printf.fprintf oc "%b\n" b else Printf.fprintf oc "%b" b
   | VStr s -> if is_nl then Printf.fprintf oc "%s\n" s else Printf.fprintf oc "%s" s
   | VChar c -> if is_nl then Printf.fprintf oc "%c\n" c else Printf.fprintf oc "%c" c
@@ -113,7 +117,7 @@ exception EvalError of string
 exception Return of value
 
 let rec match_pat p v current_env =
-  match p, v with
+  match p.item, v with
   | PWildcard, _ -> true, current_env
   | PIdent id, _ -> true, { current_env with vars = StringMap.add id (ref v) current_env.vars }
   | PTuple pats, VTuple vals ->
@@ -141,8 +145,9 @@ let rec match_pat p v current_env =
   | _ -> false, current_env
 
 let rec eval_expr env e =
-  match e with
+  match e.item with
   | ELit (LInt (v, _)) -> VInt v
+  | ELit (LFloat (v, _)) -> VFloat v
   | ELit (LBool v) -> VBool v
   | ELit (LStr v) -> VStr v
   | ELit (LChar c) -> VChar c
@@ -389,29 +394,29 @@ let rec eval_expr env e =
               let max_v = match eval_expr env (List.nth args 2) with VInt i -> i | _ -> 0L in
               VInt (Int64.max min_v (Int64.min max_v v))
           | "sin" ->
-              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
-              VInt (Int64.of_float (sin f))
+              let f = match eval_expr env (List.hd args) with VFloat f -> f | VInt i -> Int64.to_float i | _ -> 0.0 in
+              VFloat (sin f)
           | "cos" ->
-              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
-              VInt (Int64.of_float (cos f))
+              let f = match eval_expr env (List.hd args) with VFloat f -> f | VInt i -> Int64.to_float i | _ -> 0.0 in
+              VFloat (cos f)
           | "tan" ->
-              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
-              VInt (Int64.of_float (tan f))
+              let f = match eval_expr env (List.hd args) with VFloat f -> f | VInt i -> Int64.to_float i | _ -> 0.0 in
+              VFloat (tan f)
           | "sqrt" ->
-              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
-              VInt (Int64.of_float (sqrt f))
+              let f = match eval_expr env (List.hd args) with VFloat f -> f | VInt i -> Int64.to_float i | _ -> 0.0 in
+              VFloat (sqrt f)
           | "log" ->
-              let f = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
-              VInt (Int64.of_float (log f))
+              let f = match eval_expr env (List.hd args) with VFloat f -> f | VInt i -> Int64.to_float i | _ -> 0.0 in
+              VFloat (log f)
           | "pow" ->
-              let b = match eval_expr env (List.hd args) with VInt i -> Int64.to_float i | _ -> 0.0 in
-              let e = match eval_expr env (List.nth args 1) with VInt i -> Int64.to_float i | _ -> 0.0 in
-              VInt (Int64.of_float (Float.pow b e))
+              let b = match eval_expr env (List.hd args) with VFloat f -> f | VInt i -> Int64.to_float i | _ -> 0.0 in
+              let e = match eval_expr env (List.nth args 1) with VFloat f -> f | VInt i -> Int64.to_float i | _ -> 0.0 in
+              VFloat (Float.pow b e)
           | _ -> raise (EvalError ("Unknown math function: " ^ fn_name))
         ) else if resolved_path = ["std"; "hw"; "bind_interrupt"] then (
           let irq_val = eval_expr env (List.hd args) in
           let handler_name = match List.nth args 1 with
-            | EVar name -> name
+            | { item = EVar name; _ } -> name
             | _ -> "unknown"
           in
           print_endline ("[Hardware] Bound IRQ " ^ show_value irq_val ^ " to " ^ handler_name);
@@ -426,7 +431,7 @@ let rec eval_expr env e =
         | Some fn ->
             let temp_name = String.concat "::" resolved_path in
             let env_with_fn = { env with funcs = StringMap.add temp_name fn env.funcs } in
-            eval_expr env_with_fn (ECall (temp_name, args))
+            eval_expr env_with_fn ({ item = ECall (temp_name, args); span = dummy_span })
         | None -> raise (EvalError ("Function not found in module at runtime: " ^ func_name))
       )
   | EUnOp (Not, e) ->
@@ -436,7 +441,8 @@ let rec eval_expr env e =
   | EUnOp (Neg, e) ->
       (match eval_expr env e with
       | VInt i -> VInt (Int64.neg i)
-      | _ -> raise (EvalError "Expected int for Neg"))
+      | VFloat f -> VFloat (Float.neg f)
+      | _ -> raise (EvalError "Expected int or float for Neg"))
   | EBinOp (e1, And, e2) ->
       let v1 = eval_expr env e1 in
       (match v1 with
@@ -470,6 +476,37 @@ let rec eval_expr env e =
           | Lte -> VBool (i1 <= i2)
           | Gte -> VBool (i1 >= i2)
           | And | Or -> raise (EvalError "Invalid operator on integers"))
+      | VFloat f1, VFloat f2 ->
+          (match op with
+          | Add -> VFloat (f1 +. f2)
+          | Sub -> VFloat (f1 -. f2)
+          | Mul -> VFloat (f1 *. f2)
+          | Div -> VFloat (f1 /. f2)
+          | Eq -> VBool (f1 = f2)
+          | Neq -> VBool (f1 <> f2)
+          | Lt -> VBool (f1 < f2)
+          | Gt -> VBool (f1 > f2)
+          | Lte -> VBool (f1 <= f2)
+          | Gte -> VBool (f1 >= f2)
+          | _ -> raise (EvalError "Invalid operator on floats"))
+      | VInt i, VFloat f -> (* coerce int to float for mixed expressions *)
+          let f1 = Int64.to_float i in
+          (match op with
+          | Add -> VFloat (f1 +. f) | Sub -> VFloat (f1 -. f)
+          | Mul -> VFloat (f1 *. f) | Div -> VFloat (f1 /. f)
+          | Eq -> VBool (f1 = f) | Neq -> VBool (f1 <> f)
+          | Lt -> VBool (f1 < f) | Gt -> VBool (f1 > f)
+          | Lte -> VBool (f1 <= f) | Gte -> VBool (f1 >= f)
+          | _ -> raise (EvalError "Invalid operator on int/float"))
+      | VFloat f, VInt i ->
+          let f2 = Int64.to_float i in
+          (match op with
+          | Add -> VFloat (f +. f2) | Sub -> VFloat (f -. f2)
+          | Mul -> VFloat (f *. f2) | Div -> VFloat (f /. f2)
+          | Eq -> VBool (f = f2) | Neq -> VBool (f <> f2)
+          | Lt -> VBool (f < f2) | Gt -> VBool (f > f2)
+          | Lte -> VBool (f <= f2) | Gte -> VBool (f >= f2)
+          | _ -> raise (EvalError "Invalid operator on float/int"))
       | VBool b1, VBool b2 ->
           (match op with
           | Eq -> VBool (b1 = b2)
@@ -559,7 +596,7 @@ let rec eval_expr env e =
         match arms with
         | [] -> raise (EvalError "Non-exhaustive match")
         | (pat, e_arm) :: rest ->
-            let matches, env_ext = match pat, v with
+            let matches, env_ext = match pat.item, v with
               | PWildcard, _ -> true, env
               | PIdent id, _ -> true, { env with vars = StringMap.add id (ref v) env.vars }
               | PVariant (name, None), VStr s -> (name = s), env
@@ -571,12 +608,12 @@ let rec eval_expr env e =
               | PVariant (name, Some [p]), VPtr ptr -> 
                   (match (IntMap.find ptr !heap).data with
                   | HOk inner when name = "Ok" -> 
-                      (match p with
+                      (match p.item with
                       | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
                       | PWildcard -> true, env
                       | _ -> false, env)
                   | HErr inner when name = "Err" -> 
-                      (match p with
+                      (match p.item with
                       | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
                       | PWildcard -> true, env
                       | _ -> false, env)
@@ -597,7 +634,17 @@ let rec eval_expr env e =
           | None -> raise (EvalError "Dup on freed pointer"))
       | _ -> ());
       v
-  | ECast (e, _) -> eval_expr env e
+  | ECast (e, t) ->
+      let v = eval_expr env e in
+      (match v, t.item with
+      | VInt i, TBase (TF16 | TF32 | TF64 | TF128) -> VFloat (Int64.to_float i)
+      | VFloat f, TBase (TU8 | TU16 | TU32 | TU64 | TU128 | TUSize
+                        | TI8 | TI16 | TI32 | TI64 | TI128 | TISize) -> VInt (Int64.of_float f)
+      | VChar c, TBase (TU8 | TU16 | TU32 | TU64 | TU128 | TUSize
+                        | TI8 | TI16 | TI32 | TI64 | TI128 | TISize) -> VInt (Int64.of_int (Char.code c))
+      | VInt i, TBase TChar -> VChar (Char.chr (Int64.to_int i))
+      | VChar c, TBase TStr -> VStr (String.make 1 c)
+      | _ -> v)
   | EGenericApp (_, e) -> eval_expr env e
   | EArray elems ->
       let arr = Array.of_list (List.map (eval_expr env) elems) in
@@ -612,6 +659,10 @@ let rec eval_expr env e =
           let i_int = Int64.to_int idx in
           if i_int < 0 || i_int >= Array.length arr then raise (EvalError "Array index out of bounds");
           arr.(i_int)
+      | VStr str, VInt idx ->
+          let i_int = Int64.to_int idx in
+          if i_int < 0 || i_int >= String.length str then raise (EvalError "String index out of bounds");
+          VChar str.[i_int]
       | _ -> raise (EvalError "Invalid array indexing"))
   | ETransfer (e, _) -> eval_expr env e
   | EPathVar path ->
@@ -678,11 +729,11 @@ let rec eval_expr env e =
              | Some (name, _) -> name
              | None -> raise (EvalError ("Cannot resolve method " ^ method_name)))
       in
-      eval_expr env (ECall (mangled_name, obj :: args))
+      eval_expr env ({ item = ECall (mangled_name, obj :: args); span = dummy_span })
   | ESizeOf _ | ETypeOf _ | EComptime _ -> raise (EvalError "sizeof/typeof/comptime should have been evaluated at compile-time")
 
 and eval_stmt env stmt =
-  match stmt with
+  match stmt.item with
   | SDecl { kind = _; pat; typ = _; init } ->
       let v = eval_expr env init in
       let matches, new_env = match_pat pat v env in
@@ -691,7 +742,7 @@ and eval_stmt env stmt =
   | SAssign (lhs, e) ->
       let v = eval_expr env e in
       (match lhs with
-      | EVar name ->
+      | { item = EVar name; _ } ->
           if StringMap.mem name env.vars then
             let v_ref = StringMap.find name env.vars in
             v_ref := v;
@@ -701,7 +752,7 @@ and eval_stmt env stmt =
             v_ref := v;
             env
           else raise (EvalError ("Variable not found: " ^ name))
-      | EIndex (arr, i) ->
+      | { item = EIndex (arr, i); _ } ->
           let v_arr = eval_expr env arr in
           let v_idx = eval_expr env i in
           (match v_arr, v_idx with
@@ -776,7 +827,7 @@ let rec build_env env prog =
             let inx = open_in mod_path in
             let lexbuf = Lexing.from_channel inx in
             lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
-            let parsed_prog = try Parser.program Lexer.read lexbuf with
+            let parsed_prog = try Parser.parse_program Lexer.read lexbuf with
               | _ -> close_in inx; raise (EvalError ("Failed to parse imported module " ^ mod_name))
             in
             close_in inx;
@@ -787,7 +838,7 @@ let rec build_env env prog =
     | _ -> e1
   ) env prog.Ast.imports in
   let rec eval_item e item =
-    match item with
+    match item.item with
     | IFn f -> { e with funcs = StringMap.add f.name f e.funcs }
     | IEnum en -> { e with enums = StringMap.add en.name en e.enums }
     | IStruct _ -> e
@@ -810,7 +861,7 @@ let rec build_env env prog =
         let inx = open_in mod_path in
         let lexbuf = Lexing.from_channel inx in
         lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
-        let parsed_prog = try Parser.program Lexer.read lexbuf with
+        let parsed_prog = try Parser.parse_program Lexer.read lexbuf with
           | _ -> close_in inx; raise (EvalError ("Failed to parse module " ^ m.name))
         in
         close_in inx;

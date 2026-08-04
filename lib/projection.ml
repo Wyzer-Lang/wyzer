@@ -4,14 +4,14 @@ module StringSet = Set.Make(String)
 
 let get_role e =
   match Typechecker.ExprMap.find_opt Typechecker.typed_ast_map e with
-  | Some (TRole (_, r)) -> Some r
+  | Some { item = TRole (_, r); _ } -> Some r
   | _ -> None
 
 let rec roles_in_expr e =
   match get_role e with
   | Some r -> StringSet.singleton r
   | None ->
-      (match e with
+      (match e.item with
       | ELit _ | EVar _ | EPathVar _ | ENetRecv _ -> StringSet.empty
       | ECall (_, args) | EPathCall (_, args) | EMethodCall (_, _, args, _) ->
           List.fold_left (fun acc arg -> StringSet.union acc (roles_in_expr arg)) StringSet.empty args
@@ -39,7 +39,7 @@ let rec roles_in_expr e =
           List.fold_left (fun acc elem -> StringSet.union acc (roles_in_expr elem)) StringSet.empty items)
 
 and roles_in_stmt s =
-  match s with
+  match s.item with
   | SDecl d -> roles_in_expr d.init
   | SAssign (lhs, rhs) -> StringSet.union (roles_in_expr lhs) (roles_in_expr rhs)
   | SExpr e -> roles_in_expr e
@@ -56,18 +56,18 @@ and roles_in_block b =
 
 let rec project_expr e target_role =
   let my_role = get_role e in
-  match my_role with
+  let item_opt = match my_role with
   | Some r when r <> target_role && r <> "Global" && r <> "Poly" ->
       (* This expression belongs to another role, but check if it's a transfer targeting us *)
-      (match e with
+      (match e.item with
       | ETransfer (inner, dest) when dest = target_role ->
           let source_role = match get_role inner with | Some sr -> sr | None -> "Poly" in
           Some (ENetRecv source_role)
       | _ -> None)
   | _ ->
       (* It's our role or Poly. Project children *)
-      (match e with
-      | ELit _ | EVar _ | EPathVar _ -> Some e
+      (match e.item with
+      | ELit _ | EVar _ | EPathVar _ -> Some e.item
       | ETransfer (inner, dest) ->
           if dest = target_role then
              let source_role = match get_role inner with | Some sr -> sr | None -> "Poly" in
@@ -90,7 +90,7 @@ let rec project_expr e target_role =
             let p_thn_opt = project_block thn target_role in
             let p_els_opt = match els with Some b -> project_block b target_role | None -> None in
             (match p_thn_opt with
-            | Some p_thn -> Some (EIf (ENetRecv cond_role, p_thn, p_els_opt))
+            | Some p_thn -> Some (EIf ({ item = ENetRecv cond_role; span = dummy_span }, p_thn, p_els_opt))
             | None -> None)
           else
             (* We evaluate the condition. We must NOTIFY other roles if they have code in the blocks *)
@@ -103,7 +103,7 @@ let rec project_expr e target_role =
             let other_roles = StringSet.remove target_role (StringSet.union thn_roles els_roles) in
             
             let notify_stmts v = 
-              StringSet.elements other_roles |> List.map (fun r -> SExpr (ENetSend (r, ELit (LBool v))))
+              StringSet.elements other_roles |> List.map (fun r -> { item = SExpr { item = ENetSend (r, { item = ELit (LBool v); span = dummy_span }); span = dummy_span }; span = dummy_span })
             in
             
             let final_thn = { p_thn with stmts = notify_stmts true @ p_thn.stmts } in
@@ -165,10 +165,11 @@ let rec project_expr e target_role =
           (match p_obj with
           | Some po -> Some (EMethodCall (po, mname, p_args, resolved))
           | None -> None)
-      | _ -> Some e) (* Fallback for literals, vars, etc. *)
+      | _ -> Some e.item) (* Fallback for literals, vars, etc. *)
+  in Option.map (fun item -> { Ast.item; span = e.span }) item_opt
 
 and project_stmt s target_role =
-  match s with
+  let item_opt = match s.item with
   | SDecl d ->
       (match project_expr d.init target_role with
       | Some p_init -> Some (SDecl { d with init = p_init })
@@ -185,7 +186,7 @@ and project_stmt s target_role =
       (match project_expr e target_role with
       | Some p_e -> Some (SReturn (Some p_e))
       | None -> None)
-  | SReturn None -> Some s
+  | SReturn None -> Some s.item
   | SWhile (cond, b) ->
       (match project_expr cond target_role, project_block b target_role with
       | Some p_cond, Some p_b -> Some (SWhile (p_cond, p_b))
@@ -194,7 +195,8 @@ and project_stmt s target_role =
       (match project_expr e target_role, project_block b target_role with
       | Some p_e, Some p_b -> Some (SFor (it, p_e, p_b))
       | _ -> None)
-  | SDrop _ -> Some s
+  | SDrop _ -> Some s.item
+  in Option.map (fun item -> { Ast.item; span = s.span }) item_opt
 
 and project_block b target_role =
   let p_stmts = List.filter_map (fun s -> project_stmt s target_role) b.stmts in
@@ -206,7 +208,7 @@ and project_block b target_role =
   else Some { stmts = p_stmts; ret_expr = p_ret }
 
 let rec project_item target_role i =
-  match i with
+  let item_opt = match i.item with
   | IFn f ->
       let role = Option.value f.role ~default:"Poly" in
       if role = target_role || role = "Poly" || role = "Global" then
@@ -218,7 +220,7 @@ let rec project_item target_role i =
       else None
   | IGlobal g ->
       let get_role_from_typ t =
-        match t with
+        match t.item with
         | TRole (_, r) -> r
         | _ -> "Poly"
       in
@@ -226,12 +228,13 @@ let rec project_item target_role i =
       if r = target_role || r = "Global" || r = "Poly" then
         Some (IGlobal g)
       else None
-  | IEnum _ | IStruct _ | IRole _ | ITrait _ | IImpl _ -> Some i
+  | IEnum _ | IStruct _ | IRole _ | ITrait _ | IImpl _ -> Some i.item
   | IGeneric (params, inner) ->
       (match project_item target_role inner with
       | Some p_inner -> Some (IGeneric (params, p_inner))
       | None -> None)
-  | IMod _ -> Some i
+  | IMod _ -> Some i.item
+  in Option.map (fun item -> { Ast.item; span = i.span }) item_opt
 
 let project_program p target_role =
   let p_items = List.filter_map (project_item target_role) p.items in

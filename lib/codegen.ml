@@ -1,62 +1,9 @@
 open Ast
 
-module Llvm = struct
-  type llcontext = unit
-  type llmodule = unit
-  type llbuilder = unit
-  type lltype = unit
-  type llvalue = unit
-  type lbasicblock = unit
-  module Icmp = struct type t = Eq | Ne | Slt | Sgt | Sle | Sge end
-  let global_context () = ()
-  let create_module _ _ = ()
-  let builder _ = ()
-  let i32_type _ = ()
-  let i64_type _ = ()
-  let i1_type _ = ()
-  let void_type _ = ()
-  let pointer_type _ = ()
-  let var_arg_function_type _ _ = ()
-  let function_type _ _ = ()
-  let declare_function _ _ _ = ()
-  let entry_block _ = ()
-  let builder_at _ _ = ()
-  let build_alloca _ _ _ = ()
-  let const_int _ _ = ()
-  let build_global_stringptr _ _ _ = ()
-  let lookup_function _ _ = None
-  let build_load _ _ _ _ = ()
-  let build_add _ _ _ _ = ()
-  let build_sub _ _ _ _ = ()
-  let build_mul _ _ _ _ = ()
-  let build_sdiv _ _ _ _ = ()
-  let build_icmp _ _ _ _ _ = ()
-  let build_and _ _ _ _ = ()
-  let build_or _ _ _ _ = ()
-  let build_call _ _ _ _ _ = ()
-  let insertion_block _ = ()
-  let block_parent _ = ()
-  let append_block _ _ _ = ()
-  let build_cond_br _ _ _ _ = ()
-  let position_at_end _ _ = ()
-  let build_br _ _ = ()
-  let build_store _ _ _ = ()
-  let build_ret _ _ = ()
-  let build_ret_void _ = ()
-  let block_terminator _ = None
-  let const_null _ = ()
-  let set_value_name _ _ = ()
-  let params _ = [||]
-  let define_global _ _ _ = ()
-  let print_module _ _ = ()
-  let instr_begin _ = ()
-  let type_of _ = ()
-end
-
 open Llvm
 
 let pat_name (p: Ast.pattern) : string =
-  match p with
+  match p.item with
   | PIdent name -> name
   | _ -> "_pat"
 
@@ -81,7 +28,7 @@ let global_values : (lltype * llvalue) StringMap.t ref = ref StringMap.empty
 let function_types : lltype StringMap.t ref = ref StringMap.empty
 
 let rec generate_type (t: typ) : lltype =
-  match t with
+  match t.item with
   | TBase TU32 -> i32_type
   | TBase TU64 -> i64_type
   | TBase TI32 -> i32_type
@@ -111,7 +58,7 @@ let create_entry_block_alloca fn_val var_name var_type =
   build_alloca var_type var_name builder
 
 let rec generate_expr (e: expr) : llvalue =
-  match e with
+  match e.item with
   | ELit (LInt (i, t)) -> 
       let llty = match t with Some TU64 | Some TI64 -> i64_type | _ -> i32_type in
       const_int llty (Int64.to_int i)
@@ -173,7 +120,7 @@ let rec generate_expr (e: expr) : llvalue =
               in
               f, ty
           | None ->
-              (* Declare dynamic runtime function for std calls *)
+              (* we declare dynamic runtime function for std calls *)
               let ret_ty, param_tys = match resolved with
                 | "std_io_read_line" | "std_fs_read_file" -> str_type, [| str_type |]
                 | "std_fs_write_file" -> bool_type, [| str_type; str_type |]
@@ -207,12 +154,12 @@ let rec generate_expr (e: expr) : llvalue =
       
       ignore (build_cond_br cond_val then_bb else_bb builder);
       
-      (* Generate Then *)
+      (* generate then block *)
       position_at_end then_bb builder;
       ignore (generate_block thn);
       ignore (build_br merge_bb builder);
       
-      (* Generate Else *)
+      (* generate else block *)
       position_at_end else_bb builder;
       (match els with
       | Some e_block -> ignore (generate_block e_block)
@@ -224,7 +171,7 @@ let rec generate_expr (e: expr) : llvalue =
   | _ -> raise (CodegenError "Unsupported expression in LLVM backend")
 
 and generate_stmt (s: stmt) : unit =
-  match s with
+  match s.item with
   | SExpr e -> ignore (generate_expr e)
   | SDecl d ->
       let var_name = pat_name d.pat in
@@ -234,7 +181,7 @@ and generate_stmt (s: stmt) : unit =
       let alloca = create_entry_block_alloca the_function var_name init_type in
       ignore (build_store init_val alloca builder);
       named_values := StringMap.add var_name (init_type, alloca) !named_values
-  | SAssign (EVar name, e_right) ->
+  | SAssign ({ item = EVar name; _ }, e_right) ->
       let val_right = generate_expr e_right in
       (match StringMap.find_opt name !named_values with
       | Some (_, ptr) -> ignore (build_store val_right ptr builder)
@@ -253,7 +200,7 @@ and generate_block (b: block) : unit =
   | None -> ()
 
 let generate_item (item: item) : unit =
-  match item with
+  match item.item with
   | IFn f ->
       let actual_name = if f.name = "main" then "wyzer_main" else f.name in
       let ret_type = match f.ret_typ with Some t -> generate_type t | None -> void_type in

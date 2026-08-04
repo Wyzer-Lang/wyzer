@@ -17,5 +17,5 @@
  (depends
   (ocaml (>= 4.14.0))
   (dune (>= 3.10))
-  (menhir (>= 20230608))
+  (llvm (>= 14.0))
   (ppx_deriving (>= 5.2.1))))

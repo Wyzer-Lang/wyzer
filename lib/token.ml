@@ -1,0 +1,16 @@
+type token =
+  | INT of int64
+  | FLOAT of float
+  | BOOL_VAL of bool
+  | STRING_VAL of string
+  | FSTRING_VAL of string
+  | CHAR_VAL of char
+  | IDENT of string
+  | FN | ENUM | IMPORT | AS | IF | ELSE | WHILE | FOR | LET | VAR | CONST | GLOBAL | EXTERN | IN | MATCH | RETURN | TRANSFER | RESULT | OK | ERR | STRUCT | UNDERSCORE | IOTA | GENERIC | ROLE | PUB | TRAIT | IMPL | MOD | SIZEOF | TYPEOF
+  | U8 | U16 | U32 | U64 | U128 | USIZE | I8 | I16 | I32 | I64 | I128 | ISIZE | BOOL | STR | CHAR
+  | F16 | F32 | F64 | F128
+  | PLUS | MINUS | STAR | SLASH | SHL | SHR | BITAND | BITOR | AND | OR | NOT
+  | EQEQ | NEQ | LT | GT | LTE | GTE | EQ | FATARROW | PLUS_EQ | MINUS_EQ | STAR_EQ | SLASH_EQ
+  | LPAREN | RPAREN | LBRACE | RBRACE | LBRACKET | RBRACKET | COMMA | COLON | SEMICOLON | DOT | COLONCOLON | AT | AT_EQ | DOLLAR_EQ
+  | EOF
+[@@deriving show, eq]

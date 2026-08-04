@@ -2,9 +2,10 @@ open Ast
 open Eval
 
 let rec val_to_expr (v: value) : expr =
-  match v with
+  let item = match v with
   | VUnit -> EStruct ("Unit", [], None)
   | VInt i -> ELit (LInt (i, None))
+  | VFloat f -> ELit (LFloat (f, None))
   | VBool b -> ELit (LBool b)
   | VStr s -> ELit (LStr s)
   | VChar c -> ELit (LChar c)
@@ -24,14 +25,15 @@ let rec val_to_expr (v: value) : expr =
           | Eval.HEnum (_enum_name, variant_name, payload) ->
               EPathCall ([variant_name], List.map val_to_expr payload))
       | None -> failwith "val_to_expr: dangling pointer from @Compiler evaluation")
+  in { item; span = dummy_span }
 
 let rec transform_expr env e =
-  match e with
+  let item = match e.item with
   | EComptime inner ->
       (* EVALUATE AT COMPILE TIME! *)
       let transformed = transform_expr env inner in
       let v = Eval.eval_expr env transformed in
-      val_to_expr v
+      (val_to_expr v).item
   | ETransfer (inner, role) -> ETransfer (transform_expr env inner, role)
   | ECall (name, args) -> ECall (name, List.map (transform_expr env) args)
   | EPathCall (path, args) -> EPathCall (path, List.map (transform_expr env) args)
@@ -63,7 +65,7 @@ let rec transform_expr env e =
   | ENetRecv r -> ENetRecv r
   | ESizeOf t ->
       let rec sizeof_type t =
-        match t with
+        match t.item with
         | TBase TU8 | TBase TI8 | TBase TBool -> 1
         | TBase TU16 | TBase TI16 -> 2
         | TBase TU32 | TBase TI32 -> 4
@@ -78,9 +80,9 @@ let rec transform_expr env e =
       ELit (LInt (Int64.of_int (sizeof_type t), Some TU32))
   | ETypeOf inner ->
       let t = try Typechecker.ExprMap.find Typechecker.typed_ast_map inner
-              with Not_found -> TBase TUnit in
+              with Not_found -> { item = TBase TUnit; span = dummy_span } in
       let rec string_of_typ t =
-        match t with
+        match t.item with
         | TBase TU32 -> "u32"
         | TBase TI32 -> "i32"
         | TBase TStr -> "str"
@@ -91,30 +93,33 @@ let rec transform_expr env e =
       in
       ELit (LStr (string_of_typ t))
   | ETuple items -> ETuple (List.map (transform_expr env) items)
-  | ELit _ | EVar _ | EPathVar _ -> e
+  | ELit _ | EVar _ | EPathVar _ -> e.item
+  in { item; span = e.span }
 
 and transform_stmt env s =
-  match s with
+  let item = match s.item with
   | SDecl d -> SDecl { d with init = transform_expr env d.init }
   | SAssign (e1, e2) -> SAssign (transform_expr env e1, transform_expr env e2)
   | SExpr e1 -> SExpr (transform_expr env e1)
   | SWhile (cond, b) -> SWhile (transform_expr env cond, transform_block env b)
   | SFor (name, iter, b) -> SFor (name, transform_expr env iter, transform_block env b)
   | SReturn (Some e1) -> SReturn (Some (transform_expr env e1))
-  | SDrop _ | SReturn None -> s
+  | SDrop _ | SReturn None -> s.item
+  in { item; span = s.span }
 
 and transform_block env b =
   { stmts = List.map (transform_stmt env) b.stmts;
     ret_expr = Option.map (transform_expr env) b.ret_expr }
 
 let rec transform_item env i =
-  match i with
+  let item = match i.item with
   | IFn f ->
       let new_body = Option.map (transform_block env) f.body in
       IFn { f with body = new_body }
   | IGlobal g -> IGlobal { g with init = transform_expr env g.init }
   | IGeneric (params, inner) -> IGeneric (params, transform_item env inner)
-  | _ -> i
+  | _ -> i.item
+  in { item; span = i.span }
 
 let transform_program project_root (p: program) : program =
   let env = Eval.build_env { Eval.empty_env with project_root = project_root } p in

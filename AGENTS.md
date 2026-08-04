@@ -1,5 +1,3 @@
-# AGENTS.md
-
 ## Role Restriction
 
 This agent is **restricted to generating commit messages only**. No other output is permitted.

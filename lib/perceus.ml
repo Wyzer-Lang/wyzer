@@ -3,7 +3,7 @@ open Ast
 module StringSet = Set.Make(String)
 
 let rec free_vars_expr (e: expr) : StringSet.t =
-  match e with
+  match e.item with
   | ELit _ | EPathVar _ -> StringSet.empty
   | EVar x -> StringSet.singleton x
   | ECall (_, args) | EPathCall (_, args) ->
@@ -44,7 +44,7 @@ let rec free_vars_expr (e: expr) : StringSet.t =
   | ESizeOf _ | ETypeOf _ | EComptime _ -> failwith "sizeof/typeof/comptime should have been evaluated at compile-time"
 
 and bound_vars_pat (p: pattern) : StringSet.t =
-  match p with
+  match p.item with
   | PIdent x -> StringSet.singleton x
   | PVariant (_, Some pat_list) ->
       List.fold_left (fun acc p_inner -> StringSet.union acc (bound_vars_pat p_inner)) StringSet.empty pat_list
@@ -53,7 +53,7 @@ and bound_vars_pat (p: pattern) : StringSet.t =
   | PVariant (_, None) | PWildcard | PLit _ -> StringSet.empty
 
 and free_vars_stmt (s: stmt) : StringSet.t =
-  match s with
+  match s.item with
   | SDecl { init; _ } -> free_vars_expr init
   | SAssign (lhs, e) -> StringSet.union (free_vars_expr lhs) (free_vars_expr e)
   | SExpr e -> free_vars_expr e
@@ -69,13 +69,13 @@ and free_vars_block (b: block) : StringSet.t =
   StringSet.union stmts_free ret_free
 
 let rec transform_expr (live_out: StringSet.t) (e: expr) : expr =
-  match e with
+  let new_item = match e.item with
   | EStruct (name, fields, _) ->
       let find_candidate () =
         List.find_map (fun (_, fe) ->
-          match fe with
+          match fe.item with
           | EVar p when not (StringSet.mem p live_out) -> Some p
-          | EField (EVar p, _) when not (StringSet.mem p live_out) -> Some p
+          | EField ({ item = EVar p; _ }, _) when not (StringSet.mem p live_out) -> Some p
           | _ -> None
         ) fields
       in
@@ -84,17 +84,17 @@ let rec transform_expr (live_out: StringSet.t) (e: expr) : expr =
       EStruct (name, fields', reuse)
   | EOk (inner, _) ->
       let inner' = transform_expr live_out inner in
-      let reuse = match inner with
+      let reuse = match inner.item with
         | EVar p when not (StringSet.mem p live_out) -> Some p
-        | EField (EVar p, _) when not (StringSet.mem p live_out) -> Some p
+        | EField ({ item = EVar p; _ }, _) when not (StringSet.mem p live_out) -> Some p
         | _ -> None
       in
       EOk (inner', reuse)
   | EErr (inner, _) ->
       let inner' = transform_expr live_out inner in
-      let reuse = match inner with
+      let reuse = match inner.item with
         | EVar p when not (StringSet.mem p live_out) -> Some p
-        | EField (EVar p, _) when not (StringSet.mem p live_out) -> Some p
+        | EField ({ item = EVar p; _ }, _) when not (StringSet.mem p live_out) -> Some p
         | _ -> None
       in
       EErr (inner', reuse)
@@ -103,35 +103,37 @@ let rec transform_expr (live_out: StringSet.t) (e: expr) : expr =
   | EMatch (match_e, arms) ->
       let new_arms = List.map (fun (pat, arm_e) -> (pat, transform_expr live_out arm_e)) arms in
       EMatch (transform_expr live_out match_e, new_arms)
-  | ECast (e, t) -> ECast (transform_expr live_out e, t)
-  | EGenericApp (targs, e) -> EGenericApp (targs, transform_expr live_out e)
+  | ECast (e_inner, t) -> ECast (transform_expr live_out e_inner, t)
+  | EGenericApp (targs, e_inner) -> EGenericApp (targs, transform_expr live_out e_inner)
   | EArray elems -> EArray (List.map (transform_expr live_out) elems)
-  | EIndex (e, i) -> EIndex (transform_expr live_out e, transform_expr live_out i)
-  | ETransfer (e, role) -> ETransfer (transform_expr live_out e, role)
-  | EPathVar _ -> e
+  | EIndex (e_inner, i) -> EIndex (transform_expr live_out e_inner, transform_expr live_out i)
+  | ETransfer (e_inner, role) -> ETransfer (transform_expr live_out e_inner, role)
+  | EPathVar _ -> e.item
   | EFormatStr (s_ref, parsed_ref) ->
       let new_parsed = List.map (fun (e_inner, lit) -> (transform_expr live_out e_inner, lit)) !parsed_ref in
       EFormatStr (s_ref, ref new_parsed)
-  | ETyped (e, t) -> ETyped (transform_expr live_out e, t)
-  | ENetSend (r, e) -> ENetSend (r, transform_expr live_out e)
+  | ETyped (e_inner, t) -> ETyped (transform_expr live_out e_inner, t)
+  | ENetSend (r, e_inner) -> ENetSend (r, transform_expr live_out e_inner)
   | ENetRecv r -> ENetRecv r
   | EMethodCall _ -> failwith "EMethodCall should have been desugared"
   | ETuple elems -> ETuple (List.map (transform_expr live_out) elems)
-  | _ -> e (* other expressions don't currently have reuse tags *)
+  | _ -> e.item
+  in
+  { item = new_item; span = e.span }
 
 and transform_stmt (live_out: StringSet.t) (s: stmt) : stmt =
-  match s with
-  | SDecl d -> SDecl { d with init = transform_expr live_out d.init }
-  | SAssign (lhs, e) -> SAssign (transform_expr live_out lhs, transform_expr live_out e)
-  | SExpr e -> SExpr (transform_expr live_out e)
-  | SWhile (cond, b) -> SWhile (transform_expr live_out cond, transform_block live_out b)
-  | SFor (id, e, b) -> SFor (id, transform_expr live_out e, transform_block live_out b)
-  | SDrop x -> SDrop x
-  | SReturn e_opt -> SReturn (Option.map (transform_expr live_out) e_opt)
+  match s.item with
+  | SDecl d -> { item = SDecl { d with init = transform_expr live_out d.init }; span = s.span }
+  | SAssign (lhs, e) -> { item = SAssign (transform_expr live_out lhs, transform_expr live_out e); span = s.span }
+  | SExpr e -> { item = SExpr (transform_expr live_out e); span = s.span }
+  | SWhile (cond, b) -> { item = SWhile (transform_expr live_out cond, transform_block live_out b); span = s.span }
+  | SFor (id, e, b) -> { item = SFor (id, transform_expr live_out e, transform_block live_out b); span = s.span }
+  | SDrop x -> { item = SDrop x; span = s.span }
+  | SReturn e_opt -> { item = SReturn (Option.map (transform_expr live_out) e_opt); span = s.span }
 
 (* Extract all variable names bound by a pattern *)
 and names_in_pat (p: pattern) : StringSet.t =
-  match p with
+  match p.item with
   | PIdent x -> StringSet.singleton x
   | PTuple pats -> List.fold_left (fun acc p -> StringSet.union acc (names_in_pat p)) StringSet.empty pats
   | PVariant (_, Some pats) -> List.fold_left (fun acc p -> StringSet.union acc (names_in_pat p)) StringSet.empty pats
@@ -148,13 +150,13 @@ and transform_block (live_out: StringSet.t) (b: block) : block =
         let s_free = free_vars_stmt s in
         let new_live = StringSet.union next_live s_free in
         
-        let new_locals = match s with
+        let new_locals = match s.item with
           | SDecl d -> StringSet.union (names_in_pat d.pat) locals
           | _ -> locals
         in
         
         (* If this was a decl, its bound names are no longer live before this statement *)
-        let new_live = match s with
+        let new_live = match s.item with
           | SDecl d -> StringSet.diff new_live (names_in_pat d.pat)
           | _ -> new_live
         in
@@ -171,15 +173,15 @@ and transform_block (live_out: StringSet.t) (b: block) : block =
   let (stmts', _, locally_declared) = process_stmts b.stmts ret_live [] StringSet.empty in
   
   let drops = StringSet.fold (fun var acc ->
-    if not (StringSet.mem var ret_live) then SDrop var :: acc else acc
+    if not (StringSet.mem var ret_live) then { item = SDrop var; span = dummy_span } :: acc else acc
   ) locally_declared [] in
   
   { stmts = stmts' @ drops; ret_expr = ret_expr' }
 
 let rec transform_item (i: item) : item =
-  match i with
-  | IFn f -> IFn { f with body = Option.map (transform_block StringSet.empty) f.body }
-  | IGeneric (params, inner) -> IGeneric (params, transform_item inner)
+  match i.item with
+  | IFn f -> { item = IFn { f with body = Option.map (transform_block StringSet.empty) f.body }; span = i.span }
+  | IGeneric (params, inner) -> { item = IGeneric (params, transform_item inner); span = i.span }
   | _ -> i
 
 let transform_program (p: program) : program =

@@ -5,6 +5,7 @@ Wyzer is strongly typed. You must always tell the compiler exactly what type of 
 ## How to Change Variables
 
 Wyzer makes you think about when data changes.
+
 1. `let` : Creates a normal variable. You cannot change it later. (immutable variable)
 2. `var` : Creates a mutable variable
 3. `const` : Creates a fixed constant. This is evaluated before the program runs.
@@ -12,31 +13,36 @@ Wyzer makes you think about when data changes.
 ```wyzer
 fn main() {
     const MAX: u32 = 100;
-    
+
     let x: u32 = 10;
     // x = 20; // ERROR: x cannot be changed!
-    
+
     var y: u32 = 5;
     y = y + x; // OK: y was made with 'var'
 }
 ```
 
 ## Basic Types
-Numbers in Wyzer must show their exact size. 
+
+Numbers in Wyzer must show their exact size.
 
 **Integers:**
-* Unsigned (positive only): `u8`, `u16`, `u32`, `u64`
-* Signed (positive or negative): `i8`, `i16`, `i32`, `i64`
 
-*Note: The compiler can guess the type of your numbers. If you just write `42`, the compiler will look at where it is used to figure out if it is a `u8` or `u32`. If it can't tell, it will make it an `i32` by default. You can also write the type at the end of the number (like `42u32`) if you want to be extra clear.*
+- Unsigned (positive only): `u8`, `u16`, `u32`, `u64`, `u128`, `usize`
+- Signed (positive or negative): `i8`, `i16`, `i32`, `i64` , `i128`, `isize`
+
+_Note: The compiler can guess the type of your numbers. If you just write `42`, the compiler will look at where it is used to figure out if it is a `u8` or `u32`. If it can't tell, it will make it an `i32` by default. You can also write the type at the end of the number (like `42u32`) if you want to be extra clear._
 
 **Booleans:**
-* `bool` (`true` or `false`)
+
+- `bool` (`true` or `false`)
 
 **Strings:**
-* `str` (`"hello"`)
+
+- `str` (`"hello"`)
 
 ## Handling Errors
+
 Wyzer does not have exceptions that crash your program. Instead, it uses a `Result` type for errors.
 
 ```wyzer

@@ -7,12 +7,11 @@ let print_position outx lexbuf =
     pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1)
 
 let parse_with_error lexbuf =
-  try Parser.program Lexer.read lexbuf with
+  try Parser.parse_program Lexer.read lexbuf with
   | Lexer.SyntaxError msg ->
       fprintf stderr "%a: %s\n" print_position lexbuf msg;
       exit (-1)
   | Parser.Error ->
-      fprintf stderr "%a: syntax error at '%s'\n" print_position lexbuf (Lexing.lexeme lexbuf);
       exit (-1)
 
 let process_file filename =
@@ -49,10 +48,10 @@ let process_file filename =
       let out_ll = sprintf "%s_%s.ll" base_name role in
       let out_bin = sprintf "%s_%s" base_name role in
       
-      Codegen.Llvm.print_module out_ll llvm_module;
+      Llvm.print_module out_ll llvm_module;
       
       printf "Generated %s. Compiling...\n" out_ll;
-      let clang_cmd = sprintf "clang -O3 %s lib/wyzer_runtime.c -o %s" out_ll out_bin in
+      let clang_cmd = sprintf "clang -O3 %s lib/wyzer_runtime.c -lm -o %s" out_ll out_bin in
       let status = Sys.command clang_cmd in
       if status = 0 then
         printf "Successfully built %s\n" out_bin

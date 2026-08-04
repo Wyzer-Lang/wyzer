@@ -1,17 +1,43 @@
+type span = {
+  file: string;
+  start_line: int;
+  start_col: int;
+  end_line: int;
+  end_col: int;
+}
+[@@deriving show, eq]
+
+let dummy_span = {
+  file = "";
+  start_line = 0;
+  start_col = 0;
+  end_line = 0;
+  end_col = 0;
+}
+
+type 'a loc = {
+  item: 'a;
+  span: span;
+}
+[@@deriving show, eq]
+
 type base_type =
-  | TU8 | TU16 | TU32 | TU64 | TUSize
-  | TI8 | TI16 | TI32 | TI64 | TISize
+  | TU8 | TU16 | TU32 | TU64 | TU128 | TUSize
+  | TI8 | TI16 | TI32 | TI64 | TI128 | TISize
+  | TF16 | TF32 | TF64 | TF128
   | TBool | TStr | TUnit | TChar
   | TCustom of string
   | TGenericApp of typ list * base_type
 [@@deriving show, eq]
 
-and typ =
+and typ_node =
   | TBase of base_type
   | TResult of typ * typ
   | TRole of typ * string
   | TArray of typ
   | TTuple of typ list
+[@@deriving show, eq]
+and typ = typ_node loc
 [@@deriving show, eq]
 
 type binop =
@@ -27,23 +53,26 @@ type unop =
 
 type literal =
   | LInt of int64 * base_type option
+  | LFloat of float * base_type option
   | LBool of bool
   | LStr of string
   | LChar of char
 [@@deriving show, eq]
 
-type pattern =
+type pattern_node =
   | PWildcard
   | PIdent of string
   | PVariant of string * pattern list option
   | PLit of literal
   | PTuple of pattern list
 [@@deriving show, eq]
+and pattern = pattern_node loc
+[@@deriving show, eq]
 
 type var_kind = VLet | VVar | VConst
 [@@deriving show, eq]
 
-type expr =
+type expr_node =
   | ELit of literal
   | EVar of string
   | EPathVar of string list
@@ -73,8 +102,10 @@ type expr =
   | ETypeOf of expr
   | EComptime of expr
 [@@deriving show, eq]
+and expr = expr_node loc
+[@@deriving show, eq]
 
-and stmt =
+and stmt_node =
   | SDecl of { kind: var_kind; pat: pattern; typ: typ option; init: expr }
   | SAssign of expr * expr
   | SExpr of expr
@@ -82,6 +113,8 @@ and stmt =
   | SFor of string * expr * block
   | SDrop of string
   | SReturn of expr option
+[@@deriving show, eq]
+and stmt = stmt_node loc
 [@@deriving show, eq]
 
 and block = {
@@ -169,7 +202,7 @@ type mod_decl = {
 }
 [@@deriving show, eq]
 
-type item =
+type item_node =
   | IFn of fn_decl
   | IEnum of enum_decl
   | IStruct of struct_decl
@@ -179,6 +212,8 @@ type item =
   | ITrait of trait_decl
   | IImpl of impl_decl
   | IMod of mod_decl
+[@@deriving show, eq]
+and item = item_node loc
 [@@deriving show, eq]
 
 type import_decl = {
@@ -192,4 +227,3 @@ type program = {
   items: item list;
 }
 [@@deriving show, eq]
-
