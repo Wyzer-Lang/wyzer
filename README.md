@@ -19,7 +19,7 @@ It does nothing for:
 To solve this problem Wyzer introduces the concept of **choreographic programming** which is one of the few serious attempts to solve it.
 
 
-Contributions are welcome, if you want to contribute to the language please read [RESEARCH.md](https://github.com/wyzer-Lang/wyzer/blob/main/RESEARCH.md)
+Contributions are welcome, if you want to contribute to the language please read [RESEARCH.md](RESEARCH.md)
 
 Join our discord server as well :)) https://discord.gg/RhpPhkTrVu
 
