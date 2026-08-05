@@ -1,0 +1,32 @@
+// Testing error reporting 
+
+import std::fs;
+import std::io;
+
+fn process_file(filename: string, _mode: i32, unused_param: bool) {
+    let used_var = 1;
+    let unused_var = 2;
+    let _intentional_unused = 3;
+
+    io::println("Reading file...");
+    let x = used_var + 1;
+    io::println(x);
+}
+
+fn disjoint_cast_test() {
+    let numeric_mismatch = 1 + 2.0;
+    let completely_disjoint = 1 + true;
+    let another_disjoint = "hello" + 5;
+}
+
+fn return_mismatch_1() -> i32 {
+    true
+}
+
+fn return_mismatch_2() {
+    100
+}
+
+fn main() {
+    process_file("test.txt", 0, false);
+}

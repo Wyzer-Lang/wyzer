@@ -219,6 +219,7 @@ and item = item_node loc
 type import_decl = {
   path: string list;
   alias: string option;
+  span: span;
 }
 [@@deriving show, eq]
 
@@ -227,3 +228,24 @@ type program = {
   items: item list;
 }
 [@@deriving show, eq]
+
+(** Human-readable type formatter (not the ppx-derived one). *)
+let rec fmt_base_type = function
+  | TU8    -> "u8"    | TU16   -> "u16"  | TU32   -> "u32"
+  | TU64   -> "u64"   | TU128  -> "u128" | TUSize -> "usize"
+  | TI8    -> "i8"    | TI16   -> "i16"  | TI32   -> "i32"
+  | TI64   -> "i64"   | TI128  -> "i128" | TISize -> "isize"
+  | TF16   -> "f16"   | TF32   -> "f32"  | TF64   -> "f64"  | TF128  -> "f128"
+  | TBool  -> "bool"  | TStr   -> "str"  | TUnit  -> "()"   | TChar  -> "char"
+  | TCustom s -> s
+  | TGenericApp (args, inner) ->
+      fmt_base_type inner ^ "<" ^ String.concat ", " (List.map fmt_typ args) ^ ">"
+
+and fmt_typ t =
+  match t.item with
+  | TBase b           -> fmt_base_type b
+  | TResult (ok, err) -> "Result<" ^ fmt_typ ok ^ ", " ^ fmt_typ err ^ ">"
+  | TRole (inner, r)  -> if r = "Poly" || r = "Global" || r = "" then fmt_typ inner
+                         else fmt_typ inner ^ "@" ^ r
+  | TArray elem       -> "[" ^ fmt_typ elem ^ "]"
+  | TTuple elems      -> "(" ^ String.concat ", " (List.map fmt_typ elems) ^ ")"

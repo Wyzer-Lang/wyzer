@@ -85,6 +85,6 @@
 - [x] `std::string` (UTF-8 string manipulation, splitting, slicing).
 
 ## Error Reporting & Diagnostics
-- [ ] Implement a rich diagnostic engine for `LocatedError` (like Rust's `miette` or `rustc`) using accurate source spans.
-- [ ] Connect parsing syntax errors and typechecking semantic errors to the Diagnostic engine.
-- [ ] Print visual code snippets with pointers (`^~~~~`) to highlight the exact location of errors.
+- [x] Implement a rich diagnostic engine for `LocatedError` (like Rust's `miette` or `rustc`) using accurate source spans.
+- [x] Connect parsing syntax errors and typechecking semantic errors to the Diagnostic engine.
+- [x] Print visual code snippets with pointers (`^~~~~`) to highlight the exact location of errors.

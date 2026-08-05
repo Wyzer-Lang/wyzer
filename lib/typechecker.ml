@@ -7,12 +7,12 @@ type var_state = Live | Consumed
 
 type env = {
   funcs: fn_decl StringMap.t;
-  vars: (typ * bool * var_state) StringMap.t;
+  vars: (typ * bool * var_state * Ast.span * bool ref) StringMap.t;
   globals: typ StringMap.t;
   enums: enum_decl StringMap.t;
   structs: struct_decl StringMap.t;
   generic_items: (string list * item) StringMap.t;
-  imports: string list StringMap.t;
+  imports: (string list * Ast.span * bool ref) StringMap.t;
   ret_typ: typ option;
   current_role: string;
   active_targs: typ list option;
@@ -167,7 +167,7 @@ let rec unify_type expected actual subst params =
       List.fold_left2 (fun s t1 t2 -> unify_type t1 t2 s params) subst targs1 targs2
   | _, _ ->
       if types_compatible expected actual then subst
-      else raise (TypeError ("Unification failed: incompatible types " ^ Ast.show_typ expected ^ " and " ^ Ast.show_typ actual))
+      else raise (TypeError ("Unification failed: incompatible types " ^ Ast.fmt_typ expected ^ " and " ^ Ast.fmt_typ actual))
 
 let is_integer_type = function
   | TU8 | TU16 | TU32 | TU64 | TU128 | TUSize
@@ -298,7 +298,7 @@ let rec bind_pat env pat typ is_mut =
       in
       if not (types_compatible typ lit_t) then raise (TypeError "Pattern literal type mismatch");
       env
-  | PIdent id -> { env with vars = StringMap.add id (add_role_if_missing typ env.current_role, is_mut, Live) env.vars }
+  | PIdent id -> { env with vars = StringMap.add id (add_role_if_missing typ env.current_role, is_mut, Live, pat.span, ref false) env.vars }
   | PVariant (variant_name, Some pat_list) ->
       let base_t = match typ.item with TRole (t, _) -> t | _ -> typ in
       (match base_t.item with
@@ -316,7 +316,7 @@ let rec bind_pat env pat typ is_mut =
           if variant_name = "Ok" && List.length pat_list = 1 then bind_pat env (List.hd pat_list) t1 is_mut
           else if variant_name = "Err" && List.length pat_list = 1 then bind_pat env (List.hd pat_list) t2 is_mut
           else raise (TypeError "Result pattern length mismatch")
-      | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
+      | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.fmt_typ typ)))
   | PVariant (variant_name, None) ->
       let base_t = match typ.item with TRole (t, _) -> t | _ -> typ in
       (match base_t.item with
@@ -332,7 +332,7 @@ let rec bind_pat env pat typ is_mut =
           | None -> env)
       | TResult _ ->
           raise (TypeError "Result variants (Ok/Err) expect a payload")
-      | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.show_typ typ)))
+      | _ -> raise (TypeError ("Pattern matching with variants is only supported for Enums and Results. Got: " ^ Ast.fmt_typ typ)))
   | PTuple pat_list ->
       let base_t = match typ.item with TRole (t, _) -> t | _ -> typ in
       (match base_t.item with
@@ -372,13 +372,20 @@ let rec check_expr_impl env e expected_typ_opt =
   | ELit (LChar _) -> TBase TChar, env
   | EVar name ->
       (match StringMap.find_opt name env.vars with
-      | Some (_, _, Consumed) -> raise (TypeError ("Variable " ^ name ^ " has already been consumed"))
-      | Some (t, is_mut, Live) ->
+            | Some (_, _, Consumed, _sp, _used_ref) -> raise (Diagnostic.LocatedError (
+            Diagnostic.make_error
+              ~code:Error_codes.var_consumed
+              ~label:(Printf.sprintf "variable `%s` used here after being moved" name)
+              ~notes:[Printf.sprintf "`%s` is a linear resource and can only be used once" name]
+              ~hints:["consider passing it by reference if you need to use it multiple times"]
+              (Printf.sprintf "use of moved variable `%s`" name)
+              e.span))
+      | Some (t, is_mut, Live, _sp, _used_ref) -> _used_ref := true;
           let var_role = match t.item with | TRole (_, r) -> r | _ -> "Main" in
           if var_role <> "Global" && var_role <> env.current_role && env.current_role <> "Poly" then
             raise (TypeError (Printf.sprintf "Cannot access variable %s belonging to role %s from role %s" name var_role env.current_role));
           let new_vars = match t.item with
-            | TRole _ when not (is_copy_type t) -> StringMap.add name (t, is_mut, Consumed) env.vars
+            | TRole _ when not (is_copy_type t) -> (_used_ref := true; StringMap.add name (t, is_mut, Consumed, _sp, _used_ref) env.vars)
             | _ -> env.vars
           in
           t.item, { env with vars = new_vars }
@@ -389,11 +396,17 @@ let rec check_expr_impl env e expected_typ_opt =
               if var_role <> "Global" && var_role <> env.current_role then
                 raise (TypeError (Printf.sprintf "Cannot access global %s belonging to role %s from role %s" name var_role env.current_role));
               t.item, env
-          | None -> raise (TypeError ("Undefined variable: " ^ name))))
+          | None -> raise (Diagnostic.LocatedError (
+                Diagnostic.make_error
+                  ~code:Error_codes.undefined_variable
+                  ~label:(Printf.sprintf "`%s` is not defined" name)
+                  ~hints:[Printf.sprintf "did you misspell `%s` or forget to declare it?" name]
+                  (Printf.sprintf "undefined variable `%s`" name)
+                  e.span))))
   | EPathVar path ->
       let resolved_path =
         match StringMap.find_opt (List.hd path) env.imports with
-        | Some mod_path -> mod_path @ List.tl path
+        | Some (mod_path, _, _used_ref) -> _used_ref := true; mod_path @ List.tl path
         | None -> path
       in
       (match resolved_path with
@@ -507,7 +520,7 @@ let rec check_expr_impl env e expected_typ_opt =
       let t_obj, _ = check_expr env obj None in
       let rec find_method impls =
         match impls with
-        | [] -> raise (TypeError ("No method " ^ method_name ^ " found for type " ^ Ast.show_typ t_obj))
+        | [] -> raise (TypeError ("No method " ^ method_name ^ " found for type " ^ Ast.fmt_typ t_obj))
         | impl :: rest ->
             if types_compatible impl.for_typ t_obj then
               match List.find_opt (fun (m: Ast.fn_decl) -> m.name = method_name) impl.methods with
@@ -516,7 +529,7 @@ let rec check_expr_impl env e expected_typ_opt =
             else find_method rest
       in
       let (impl, _) = find_method env.impls in
-      let mangled_name = impl.trait_name ^ "_" ^ (Ast.show_typ impl.for_typ |> String.map (function ' ' | '(' | ')' -> '_' | c -> c)) ^ "_" ^ method_name in
+      let mangled_name = impl.trait_name ^ "_" ^ (Ast.fmt_typ impl.for_typ |> String.map (function ' ' | '(' | ')' -> '_' | c -> c)) ^ "_" ^ method_name in
       resolved_name_ref := Some mangled_name;
       check_expr_impl env { item = ECall (mangled_name, obj :: args); span = dummy_span } expected_typ_opt
   | EPathCall (path, args) ->
@@ -542,7 +555,7 @@ let rec check_expr_impl env e expected_typ_opt =
       ) else
       let resolved_path =
         match StringMap.find_opt prefix env.imports with
-        | Some actual_module -> actual_module @ (List.tl path)
+        | Some (actual_module, _, _used_ref) -> _used_ref := true; actual_module @ (List.tl path)
         | None -> path
       in
       let rec resolve_module current_env p =
@@ -675,7 +688,7 @@ let rec check_expr_impl env e expected_typ_opt =
               | { item = TArray _; _ } ->
                   if fn_name = "len" then
                     let env_live = match List.hd args with
-                      | { item = EVar name; _ } -> (match StringMap.find_opt name env1.vars with Some (vt, mut, _) -> { env1 with vars = StringMap.add name (vt, mut, Live) env1.vars } | None -> env1)
+                      | { item = EVar name; _ } -> (match StringMap.find_opt name env1.vars with Some (vt, mut, _, _sp, _used_ref) -> _used_ref := true; { env1 with vars = StringMap.add name (vt, mut, Live, _sp, _used_ref) env1.vars } | None -> env1)
                       | _ -> env1
                     in
                     TBase TI64, env_live
@@ -698,7 +711,7 @@ let rec check_expr_impl env e expected_typ_opt =
                   let t_elem, env2 = check_expr env1 (List.nth args 1) (Some elem_t) in
                   if not (types_compatible elem_t t_elem) then raise (TypeError "Type mismatch in std::collections::contains");
                   let env_live = match List.hd args with
-                    | { item = EVar name; _ } -> (match StringMap.find_opt name env2.vars with Some (vt, mut, _) -> { env2 with vars = StringMap.add name (vt, mut, Live) env2.vars } | None -> env2)
+                    | { item = EVar name; _ } -> (match StringMap.find_opt name env2.vars with Some (vt, mut, _, _sp, _used_ref) -> _used_ref := true; { env2 with vars = StringMap.add name (vt, mut, Live, _sp, _used_ref) env2.vars } | None -> env2)
                     | _ -> env2
                   in
                   TBase TBool, env_live
@@ -774,7 +787,18 @@ let rec check_expr_impl env e expected_typ_opt =
       in
       let t1, env1 = check_expr env e1 expected_e1 in
       let t2, env2 = check_expr env1 e2 (Some t1) in
-      if not (types_compatible t1 t2) then raise (TypeError "Binary operator operands must have compatible types");
+      if not (types_compatible t1 t2) then raise (Diagnostic.LocatedError (
+          Diagnostic.make_error
+            ~code:Error_codes.binop_type_mismatch
+            ~label:(Printf.sprintf "operands have types `%s` and `%s`" (Ast.fmt_typ t1) (Ast.fmt_typ t2))
+            ~secondary_labels:[
+              { span = e1.span; message = Printf.sprintf "this is `%s`" (Ast.fmt_typ t1) };
+              { span = e2.span; message = Printf.sprintf "this is `%s`" (Ast.fmt_typ t2) };
+            ]
+            ~hints:(if is_numeric_type_t t1 && is_numeric_type_t t2 then [Printf.sprintf "consider casting the right operand using `as %s`" (Ast.fmt_typ t1)] else [])
+            ~patches:(if is_numeric_type_t t1 && is_numeric_type_t t2 then [{ Diagnostic.span = e2.span; replacement = Printf.sprintf "(%s as %s)" (Diagnostic.extract_span_text e2.span) (Ast.fmt_typ t1) }] else [])
+            (Printf.sprintf "mismatched types: `%s` vs `%s`" (Ast.fmt_typ t1) (Ast.fmt_typ t2))
+            e.span));
       (match op with
       | Add | Sub | Mul | Div | Shl | Shr | BitAnd | BitOr ->
           if is_numeric_type_t t1 then t1.item, env2
@@ -838,7 +862,15 @@ let rec check_expr_impl env e expected_typ_opt =
           if trace_thn <> trace_els then
             raise (TypeError "Asymmetric choreography: 'if' and 'else' branches must have identical transfer footprints");
           if not (types_compatible (Option.value t_thn ~default:({ item = TBase TUnit; span = dummy_span })) (Option.value t_els ~default:({ item = TBase TUnit; span = dummy_span }))) then 
-                raise (TypeError "if and else branches must have same return type");
+                raise (Diagnostic.LocatedError (
+              Diagnostic.make_error
+                ~code:Error_codes.if_branch_mismatch
+                ~label:"branches have different types"
+                ~notes:[Printf.sprintf "then branch: `%s`, else branch: `%s`"
+                  (Ast.fmt_typ (Option.value t_thn ~default:{ item = TBase TUnit; span = dummy_span }))
+                  (Ast.fmt_typ (Option.value t_els ~default:{ item = TBase TUnit; span = dummy_span }))]
+                "if and else branches must return the same type"
+                e.span));
           (Option.value t_thn ~default:({ item = TBase TUnit; span = dummy_span })).item, { env_els with vars = env_thn.vars }
       | None ->
           if trace_thn <> [] then
@@ -928,7 +960,7 @@ let rec check_expr_impl env e expected_typ_opt =
       let env_res = match e.item with
         | EVar name ->
             (match StringMap.find_opt name env1.vars with
-             | Some (vt, mut, _) -> { env1 with vars = StringMap.add name (vt, mut, Live) env1.vars }
+             | Some (vt, mut, _, _sp, _used_ref) -> _used_ref := true; { env1 with vars = StringMap.add name (vt, mut, Live, _sp, _used_ref) env1.vars }
              | None -> env1)
         | _ -> env1
       in
@@ -1067,7 +1099,7 @@ and check_stmt env stmt =
         | None -> None
       in
       (match typ_with_role with
-      | Some t -> if not (types_compatible t t_init) then raise (TypeError (Printf.sprintf "Type mismatch in declaration: expected %s, got %s" (Ast.show_typ t) (Ast.show_typ t_init)))
+      | Some t -> if not (types_compatible t t_init) then raise (TypeError (Printf.sprintf "Type mismatch in declaration: expected %s, got %s" (Ast.fmt_typ t) (Ast.fmt_typ t_init)))
       | None -> ());
       let t_final = Option.value typ_with_role ~default:t_init in
       let t_final = add_role_if_missing t_final env1.current_role in
@@ -1082,12 +1114,12 @@ and check_stmt env stmt =
       (match lhs with
       | { item = EVar name; _ } ->
           (match StringMap.find_opt name env.vars with
-          | Some (var_t, true, Live) ->
+            | Some (var_t, true, Live, _sp, _used_ref) ->
               let t_e, env1 = check_expr env e (Some var_t) in
               if not (types_compatible var_t t_e) then raise (TypeError ("Type mismatch in assignment to " ^ name));
-              { env1 with vars = StringMap.add name (t_e, true, Live) env1.vars }
-          | Some (_, false, _) -> raise (TypeError ("Cannot reassign immutable variable " ^ name))
-          | Some (_, _, Consumed) -> raise (TypeError ("Cannot reassign consumed variable " ^ name))
+              { env1 with vars = StringMap.add name (t_e, true, Live, stmt.span, ref false) env1.vars }
+          | Some (_, false, _, _, _) -> raise (TypeError ("Cannot reassign immutable variable " ^ name))
+          | Some (_, _, Consumed, _sp, _used_ref) -> raise (TypeError ("Cannot reassign consumed variable " ^ name))
           | None ->
               (match StringMap.find_opt name env.globals with
               | Some t_var ->
@@ -1109,9 +1141,9 @@ and check_stmt env stmt =
               let env_res = match arr.item with
                 | EVar name ->
                     (match StringMap.find_opt name env_final.vars with
-                    | Some (_, is_mut, _) ->
+                    | Some (_, is_mut, _, _sp, _used_ref) ->
                         if not is_mut then raise (TypeError ("Cannot mutate immutable array: " ^ name));
-                        { env_final with vars = StringMap.add name (t_arr, true, Live) env_final.vars }
+                        { env_final with vars = StringMap.add name (t_arr, true, Live, stmt.span, ref false) env_final.vars }
                     | None -> env_final)
                 | _ -> env_final
               in
@@ -1132,7 +1164,7 @@ and check_stmt env stmt =
         | { item = TArray inner; _ } -> inner
         | _ -> { item = TBase TU8; span = dummy_span } (* fallback for non-array iterables *)
       in
-      let env_for = { env1 with vars = StringMap.add id (elem_t, false, Live) env1.vars } in
+      let env_for = { env1 with vars = StringMap.add id (elem_t, false, Live, e.span, ref false) env1.vars } in
       let env2, _ = check_block env_for b in
       env2
   | SReturn e_opt ->
@@ -1140,13 +1172,18 @@ and check_stmt env stmt =
       | Some e, Some expected_t ->
           let t_e, env_next = check_expr env e (Some expected_t) in
           let expected_t = add_role_if_missing expected_t env.current_role in
-          if not (types_compatible expected_t t_e) then raise (TypeError "Return type mismatch");
+          if not (types_compatible expected_t t_e) then raise (Diagnostic.LocatedError (
+              Diagnostic.make_error
+                ~code:Error_codes.return_type_mismatch
+                ~label:(Printf.sprintf "expected `%s`, found `%s`" (Ast.fmt_typ expected_t) (Ast.fmt_typ t_e))
+                "return type mismatch"
+                e.span));
           env_next
       | None, None -> env
       | Some _, None -> raise (TypeError "Cannot return a value from a unit function")
       | None, Some _ -> raise (TypeError "Function must return a value")
       in
-      StringMap.iter (fun name (t, _, state) ->
+      StringMap.iter (fun name (t, _, state, _, _) ->
         match t.item with
         | TRole _ when state = Live && not (is_copy_type t) -> 
             raise (TypeError ("Cannot return early with unconsumed linear resource: " ^ name))
@@ -1159,6 +1196,21 @@ and check_stmt env stmt =
 
 and check_block env block =
   let env_final = List.fold_left check_stmt env block.stmts in
+  StringMap.iter (fun name v2 ->
+    let is_new = match StringMap.find_opt name env.vars with
+      | Some v1 -> v1 != v2
+      | None -> true
+    in
+    if is_new then
+      let (_, _, _, span, used_ref) = v2 in
+      if not !used_ref && not (String.starts_with ~prefix:"_" name) && name <> "iota" then
+        Diagnostic.emit (Diagnostic.make_warning
+          ~code:"W001"
+          ~label:(Printf.sprintf "variable `%s` is never used" name)
+          ~hints:[Printf.sprintf "if this is intentional, prefix it with an underscore: `_%s`" name]
+          (Printf.sprintf "unused variable `%s`" name)
+          span)
+  ) env_final.vars;
   match block.ret_expr with
   | Some e ->
       let t_e, env_ret = check_expr env_final e None in
@@ -1170,18 +1222,55 @@ let check_fn_decl env (fn: Ast.fn_decl) =
   let role_str = Option.value fn.role ~default:"Poly" in
   let initial_vars = List.fold_left (fun acc (p: Ast.param) ->
     let p_typ_with_role = add_role_if_missing p.typ role_str in
-    StringMap.add p.name (p_typ_with_role, false, Live) acc
+    StringMap.add p.name (p_typ_with_role, false, Live, dummy_span, ref false) acc
   ) StringMap.empty fn.params in
   let local_env = { env with vars = initial_vars; ret_typ = fn.ret_typ; current_role = role_str } in
   (match fn.body with
    | Some b -> 
-       let env_final, _ = check_block local_env b in
-       StringMap.iter (fun name (t, _, state) ->
-         match t.item with
-         | TRole _ when state = Live && not (is_copy_type t) -> 
-             raise (TypeError ("Function " ^ fn.name ^ " ends with unconsumed linear resource: " ^ name))
-         | _ -> ()
-       ) env_final.vars
+       let env_final, block_ret_opt = check_block local_env b in
+       (match block_ret_opt, fn.ret_typ with
+        | Some t_e, Some expected_t ->
+            let expected_t_role = add_role_if_missing expected_t role_str in
+            if not (types_compatible expected_t_role t_e) then
+              let span = match b.ret_expr with Some e -> e.span | None -> dummy_span in
+              raise (Diagnostic.LocatedError (
+                Diagnostic.make_error
+                  ~code:Error_codes.return_type_mismatch
+                  ~label:(Printf.sprintf "expected `%s`, found `%s`" (Ast.fmt_typ expected_t_role) (Ast.fmt_typ t_e))
+                  "implicit return type mismatch"
+                  span))
+        | Some t_e, None ->
+            let span = match b.ret_expr with Some e -> e.span | None -> dummy_span in
+            raise (Diagnostic.LocatedError (
+              Diagnostic.make_error
+                ~code:Error_codes.return_type_mismatch
+                ~label:(Printf.sprintf "expected unit, found `%s`" (Ast.fmt_typ t_e))
+                "cannot return a value from a unit function"
+                span))
+        | None, Some expected_t ->
+            raise (Diagnostic.LocatedError (
+              Diagnostic.make_error
+                ~code:Error_codes.return_type_mismatch
+                ~label:(Printf.sprintf "expected `%s`, found unit" (Ast.fmt_typ expected_t))
+                "function must return a value"
+                expected_t.span))
+        | None, None -> ());
+       StringMap.iter (fun name _ ->
+         match StringMap.find_opt name env_final.vars with
+         | Some (t, _, state, _, used_ref) ->
+             (match t.item with
+              | TRole _ when state = Live && not (is_copy_type t) -> 
+                  raise (TypeError ("Function " ^ fn.name ^ " ends with unconsumed linear resource: " ^ name))
+              | _ ->
+                  if not !used_ref && not (String.starts_with ~prefix:"_" name) then
+                    Diagnostic.emit (Diagnostic.make_warning
+                      ~code:"W001"
+                      ~label:(Printf.sprintf "parameter `%s` is never used" name)
+                      ~hints:[Printf.sprintf "if this is intentional, prefix it with an underscore: `_%s`" name]
+                      (Printf.sprintf "unused parameter `%s`" name)
+                      dummy_span))
+         | None -> ()
+       ) initial_vars
    | None -> if not fn.is_extern then raise (TypeError ("Function " ^ fn.name ^ " must have a body")));
   { env with funcs = StringMap.add fn.name fn env.funcs }
 
@@ -1212,7 +1301,7 @@ let rec check_item env item =
   match item.item with
   | IFn f -> check_fn_decl env f
   | IEnum e ->
-      let iota_env = { env with vars = StringMap.add "iota" ({ item = TRole ({ item = TBase TU64; span = dummy_span }, "Global"); span = dummy_span }, false, Live) env.vars } in
+      let iota_env = { env with vars = StringMap.add "iota" ({ item = TRole ({ item = TBase TU64; span = dummy_span }, "Global"); span = dummy_span }, false, Live, dummy_span, ref true) env.vars } in
       let _, _ = check_expr iota_env e.iota_expr (Some { item = TBase TU64; span = dummy_span }) in
       let current_iota = ref 0L in
       List.iter (fun (m: Ast.enum_member) ->
@@ -1263,7 +1352,7 @@ let rec check_item env item =
       in
       let env_with_impl = { env with impls = i :: env.impls } in
       List.fold_left (fun e (m: fn_decl) ->
-        let mangled_name = i.trait_name ^ "_" ^ (Ast.show_typ i.for_typ |> String.map (function ' ' | '(' | ')' -> '_' | c -> c)) ^ "_" ^ m.name in
+        let mangled_name = i.trait_name ^ "_" ^ (Ast.fmt_typ i.for_typ |> String.map (function ' ' | '(' | ')' -> '_' | c -> c)) ^ "_" ^ m.name in
         let mangled_m = { m with name = mangled_name } in
         check_fn_decl e mangled_m
       ) env_with_impl i.methods
@@ -1287,7 +1376,7 @@ and check_program_inner env prog =
       | Some a -> a
       | None -> List.hd (List.rev imp.path)
     in
-    let e1 = { e with imports = StringMap.add prefix imp.path e.imports } in
+    let e1 = { e with imports = StringMap.add prefix (imp.path, imp.span, ref false) e.imports } in
     match imp.path with
     | "bundle" :: rest ->
         let mod_name = List.hd rest in
@@ -1307,7 +1396,28 @@ and check_program_inner env prog =
         )
     | _ -> e1
   ) env prog.Ast.imports in
-  List.fold_left check_item env_with_imports prog.items
+  let env_final = 
+    try List.fold_left check_item env_with_imports prog.items
+    with e -> 
+      StringMap.iter (fun prefix (_path, span, used_ref) ->
+        if not !used_ref then
+          Diagnostic.emit (Diagnostic.make_warning
+            ~code:"W002"
+            ~label:(Printf.sprintf "import `%s` is never used" prefix)
+            (Printf.sprintf "unused import `%s`" prefix)
+            span)
+      ) env_with_imports.imports;
+      raise e
+  in
+  StringMap.iter (fun prefix (_path, span, used_ref) ->
+    if not !used_ref then
+      Diagnostic.emit (Diagnostic.make_warning
+        ~code:"W002"
+        ~label:(Printf.sprintf "import `%s` is never used" prefix)
+        (Printf.sprintf "unused import `%s`" prefix)
+        span)
+  ) env_final.imports;
+  env_final
 
 let check_program project_root prog =
   check_program_inner { empty_env with project_root = project_root } prog

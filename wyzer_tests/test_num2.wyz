@@ -1,0 +1,5 @@
+fn main() {
+    let y: i32 = 1;
+    let z: f64 = 2.0;
+    let x = y + z;
+}

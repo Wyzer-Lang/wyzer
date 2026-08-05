@@ -1,18 +1,34 @@
 open Printf
 open Wyzer_lib
 
-let print_position outx lexbuf =
+(** Convert a Lexing position to a Diagnostic span. *)
+let lex_span lexbuf =
   let pos = lexbuf.Lexing.lex_curr_p in
-  fprintf outx "%s:%d:%d" pos.pos_fname
-    pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1)
+  Ast.{
+    file       = pos.pos_fname;
+    start_line = pos.pos_lnum;
+    start_col  = pos.pos_cnum - pos.pos_bol + 1;
+    end_line   = pos.pos_lnum;
+    end_col    = pos.pos_cnum - pos.pos_bol + 2;
+  }
 
 let parse_with_error lexbuf =
-  try Parser.parse_program Lexer.read lexbuf with
+  try Parser.parse_program Lexer.read lexbuf
+  with
   | Lexer.SyntaxError msg ->
-      fprintf stderr "%a: %s\n" print_position lexbuf msg;
-      exit (-1)
+      Diagnostic.(emit (make_error
+        ~code:Error_codes.syntax_error
+        ~label:msg
+        "syntax error"
+        (lex_span lexbuf)));
+      exit 1
+  | Diagnostic.LocatedError d ->
+      Diagnostic.emit d;
+      exit 1
   | Parser.Error ->
-      exit (-1)
+      (* Bare parser.Error (menhir) — no span info *)
+      Diagnostic.emit_plain_error "unexpected parse error";
+      exit 1
 
 let process_file filename =
   let inx = open_in filename in
@@ -20,7 +36,7 @@ let process_file filename =
   lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = filename };
   let prog = parse_with_error lexbuf in
   close_in inx;
-  
+
   let project_root = Filename.dirname filename in
   try
     let _ = Typechecker.check_program project_root prog in
@@ -36,20 +52,20 @@ let process_file filename =
     done;
     let prog_to_run = match !target_role_opt with
     | Some r -> Projection.project_program prog_comptime r
-    | None -> prog_comptime
+    | None   -> prog_comptime
     in
     let prog_transformed = Perceus.transform_program prog_to_run in
-    
+
     let command = if Array.length Sys.argv > 1 then Sys.argv.(1) else "run" in
     if command = "build" then (
       let role = Option.value !target_role_opt ~default:"Poly" in
       let llvm_module = Codegen.generate_llvm prog_transformed role in
       let base_name = Filename.remove_extension (Filename.basename filename) in
-      let out_ll = sprintf "%s_%s.ll" base_name role in
-      let out_bin = sprintf "%s_%s" base_name role in
-      
+      let out_ll  = sprintf "%s_%s.ll"  base_name role in
+      let out_bin = sprintf "%s_%s"     base_name role in
+
       Llvm.print_module out_ll llvm_module;
-      
+
       printf "Generated %s. Compiling...\n" out_ll;
       let clang_cmd = sprintf "clang -O3 %s lib/wyzer_runtime.c -lm -o %s" out_ll out_bin in
       let status = Sys.command clang_cmd in
@@ -58,15 +74,30 @@ let process_file filename =
       else
         fprintf stderr "Error: clang compilation failed\n"
     ) else (
-      Eval.eval_program project_root prog_transformed (Option.value !target_role_opt ~default:"Poly")
+      Eval.eval_program project_root prog_transformed
+        (Option.value !target_role_opt ~default:"Poly")
     )
   with
+  (* Rich located errors from typechecker / parser *)
+  | Diagnostic.LocatedError d ->
+      Diagnostic.emit d;
+      exit 1
+  (* Legacy plain TypeError (sites not yet migrated) *)
   | Typechecker.TypeError msg ->
-      fprintf stderr "Type Error: %s\n" msg;
-      exit (-1)
+      Diagnostic.(emit (make_error
+        ~code:Error_codes.type_error
+        ~label:"type error here"
+        msg
+        Ast.dummy_span));
+      exit 1
+  (* Runtime errors *)
   | Eval.EvalError msg ->
-      fprintf stderr "Runtime Error: %s\n" msg;
-      exit (-1)
+      Diagnostic.(emit (make_error
+        ~code:Error_codes.runtime_error
+        ~label:"runtime error occurred"
+        msg
+        Ast.dummy_span));
+      exit 1
 
 let () =
   if Array.length Sys.argv < 3 then (

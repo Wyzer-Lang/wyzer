@@ -1,6 +1,7 @@
 [@@@warning "-27"]
 open Ast
 open Token
+open Diagnostic
 
 exception Error
 
@@ -24,19 +25,8 @@ let consume p tok =
   if p.current = tok then (next_token p; true)
   else false
 
-let expect p tok =
-  if p.current = tok then next_token p
-  else raise Error
-
 let get_pos p =
-  p.lexbuf.lex_curr_p
-
-let error p msg =
-  let pos = get_pos p in
-  Printf.eprintf "%s:%d:%d: %s (got %s)\n"
-    pos.pos_fname pos.pos_lnum (pos.pos_cnum - pos.pos_bol + 1)
-    msg (show_token p.current);
-  raise Error
+  p.lexbuf.lex_start_p
 
 let make_span start_pos end_pos =
   {
@@ -46,6 +36,33 @@ let make_span start_pos end_pos =
     end_line = end_pos.Lexing.pos_lnum;
     end_col = end_pos.Lexing.pos_cnum - end_pos.Lexing.pos_bol + 1;
   }
+
+let expect p tok =
+  if p.current = tok then next_token p
+  else
+    let pos = get_pos p in
+    let span = make_span pos pos in
+    let patches = if tok = SEMICOLON then [ { Diagnostic.span; replacement = ";" } ] else [] in
+    raise_error
+      ~code:Error_codes.unexpected_token
+      ~label:(Printf.sprintf "expected `%s`, found `%s`" (show_token_human tok) (show_token_human p.current))
+      ~patches
+      (Printf.sprintf "expected `%s`" (show_token_human tok))
+      span
+
+let expect_semi_opt_rbrace p =
+  if consume p SEMICOLON then ()
+  else if peek p = RBRACE then ()
+  else expect p SEMICOLON
+
+let error p msg =
+  let pos = get_pos p in
+  let span = make_span pos pos in
+  raise_error
+    ~code:Error_codes.syntax_error
+    ~label:(Printf.sprintf "unexpected token `%s`" (show_token_human p.current))
+    msg
+    span
 
 let combine_span s end_pos =
   { s with
@@ -507,7 +524,7 @@ and parse_block_stmts p =
       | EQ ->
           next_token p;
           let rhs = parse_expr p 0 false in
-          expect p SEMICOLON;
+          expect_semi_opt_rbrace p;
           let end_pos = get_pos p in
           let s = { item = SAssign (e, rhs); span = combine_span e.span end_pos } in
           if peek p = RBRACE then ([s], None)
@@ -517,7 +534,7 @@ and parse_block_stmts p =
       | PLUS_EQ ->
           next_token p;
           let rhs = parse_expr p 0 false in
-          expect p SEMICOLON;
+          expect_semi_opt_rbrace p;
           let end_pos = get_pos p in
           let bin = { item = EBinOp (e, Add, rhs); span = combine_span e.span end_pos } in
           let s = { item = SAssign (e, bin); span = combine_span e.span end_pos } in
@@ -528,7 +545,7 @@ and parse_block_stmts p =
       | MINUS_EQ ->
           next_token p;
           let rhs = parse_expr p 0 false in
-          expect p SEMICOLON;
+          expect_semi_opt_rbrace p;
           let end_pos = get_pos p in
           let bin = { item = EBinOp (e, Sub, rhs); span = combine_span e.span end_pos } in
           let s = { item = SAssign (e, bin); span = combine_span e.span end_pos } in
@@ -539,7 +556,7 @@ and parse_block_stmts p =
       | STAR_EQ ->
           next_token p;
           let rhs = parse_expr p 0 false in
-          expect p SEMICOLON;
+          expect_semi_opt_rbrace p;
           let end_pos = get_pos p in
           let bin = { item = EBinOp (e, Mul, rhs); span = combine_span e.span end_pos } in
           let s = { item = SAssign (e, bin); span = combine_span e.span end_pos } in
@@ -550,7 +567,7 @@ and parse_block_stmts p =
       | SLASH_EQ ->
           next_token p;
           let rhs = parse_expr p 0 false in
-          expect p SEMICOLON;
+          expect_semi_opt_rbrace p;
           let end_pos = get_pos p in
           let bin = { item = EBinOp (e, Div, rhs); span = combine_span e.span end_pos } in
           let s = { item = SAssign (e, bin); span = combine_span e.span end_pos } in
@@ -578,12 +595,12 @@ and parse_stmt p =
         let typ = if consume p COLON then Some (parse_typ p) else None in
         expect p EQ;
         let init = parse_expr p 0 false in
-        expect p SEMICOLON;
+        expect_semi_opt_rbrace p;
         SDecl { kind; pat; typ; init }
     | RETURN ->
         next_token p;
-        let e = if peek p = SEMICOLON then None else Some (parse_expr p 0 false) in
-        expect p SEMICOLON;
+        let e = if peek p = SEMICOLON then None else if peek p = RBRACE then None else Some (parse_expr p 0 false) in
+        expect_semi_opt_rbrace p;
         SReturn e
     | WHILE ->
         next_token p;
@@ -770,11 +787,13 @@ let rec parse_item p =
   )
 
 let parse_import_decl p =
+  let start_pos = get_pos p in
   expect p IMPORT;
   let path = parse_module_path p in
   let alias = if consume p AS then Some (parse_ident p) else None in
   expect p SEMICOLON;
-  { path; alias }
+  let end_pos = get_pos p in
+  { path; alias; span = make_span start_pos end_pos }
 
 let parse_program lexer lexbuf =
   let p = init_state lexer lexbuf in
