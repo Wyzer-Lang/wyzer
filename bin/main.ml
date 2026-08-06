@@ -39,8 +39,14 @@ let process_file filename =
 
   let project_root = Filename.dirname filename in
   try
+    print_endline "Starting typechecking...";
+    flush stdout;
     let _ = Typechecker.check_program project_root prog in
+    print_endline "Typechecking done. Starting comptime transformation...";
+    flush stdout;
     let prog_comptime = Comptime.transform_program project_root prog in
+    print_endline "Comptime done. Starting projection...";
+    flush stdout;
     let target_role_opt = ref None in
     let filename_idx = ref 1 in
     for i = 1 to Array.length Sys.argv - 1 do
@@ -55,6 +61,8 @@ let process_file filename =
     | None   -> prog_comptime
     in
     let prog_transformed = Perceus.transform_program prog_to_run in
+    print_endline "Perceus done. Starting LLVM codegen...";
+    flush stdout;
 
     let command = if Array.length Sys.argv > 1 then Sys.argv.(1) else "run" in
     if command = "build" then (

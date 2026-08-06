@@ -6,17 +6,17 @@ pub enum Message {
 
 fn handle_ok(val: u32) -> u32 {
     std::io::println("Success! The value was received.");
-    return val;
+    val
 }
 
 fn handle_err(msg: str) -> u32 {
     std::io::println(msg);
-    return 999u32;
+    999
 }
 
 fn handle_none() -> u32 {
     std::io::println("Nothing was returned.");
-    return 0u32;
+    0
 }
 
 fn process_result(r: Message) -> u32 {
@@ -28,7 +28,7 @@ fn process_result(r: Message) -> u32 {
 }
 
 fn main() {
-    let r1: Message = Message::Ok(42u32);
+    let r1: Message = Message::Ok(42);
     let o1: u32 = process_result(r1);
 
     let r2: Message = Message::Err("Network Timeout");
@@ -36,4 +36,5 @@ fn main() {
     
     let r3: Message = Message::None;
     let o3: u32 = process_result(r3);
+    std::io::println("Results: {}, {}, {}", o1, o2, o3);
 }

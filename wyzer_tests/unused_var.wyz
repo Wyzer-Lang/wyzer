@@ -1,5 +1,7 @@
 import std::fs;
+import std::io; 
 
 fn main() {
-    let x = 1; (true as bool)
+    let x = 1;
+    io::println(x);
 }

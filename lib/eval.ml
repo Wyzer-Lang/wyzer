@@ -52,6 +52,25 @@ let replace_string s from_str to_str =
   if from_str = "" then s
   else String.concat to_str (split_string s from_str)
 
+let string_of_val arg =
+  match arg with
+  | VInt i -> Int64.to_string i
+  | VFloat f -> if Float.is_integer f then Printf.sprintf "%.1f" f else Printf.sprintf "%g" f
+  | VBool b -> string_of_bool b
+  | VStr s -> s
+  | VChar c -> String.make 1 c
+  | VUnit -> "()"
+  | VPtr ptr -> 
+       let entry = IntMap.find ptr !heap in
+       (match entry.data with
+       | HOk _ -> "Ok(...)"
+       | HErr _ -> "Err(...)"
+       | HStruct _ -> "struct{...}"
+       | HEnum (_, v_name, _) -> v_name ^ "(...)")
+  | VArray _ -> "[...]"
+  | VTuple _ -> "(...)"
+  | _ -> "<unknown>"
+
 let rec print_val oc is_nl arg =
   (match arg with
   | VInt i -> if is_nl then Printf.fprintf oc "%Ld\n" i else Printf.fprintf oc "%Ld" i
@@ -219,14 +238,58 @@ let rec eval_expr env e =
       if List.length resolved_path > 0 && List.hd resolved_path = "std" then (
         if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] then (
           let is_nl = resolved_path = ["std"; "io"; "println"] in
-          let arg = eval_expr env (List.hd args) in
-          print_val stdout is_nl arg;
-          VUnit
+          if List.length args > 1 then (
+            let fmt_str = match eval_expr env (List.hd args) with VStr s -> s | _ -> raise (EvalError "Expected string format") in
+            let arg_vals = List.map (eval_expr env) (List.tl args) in
+            let rec format_string s args acc =
+              match args with
+              | [] -> acc ^ s
+              | arg :: rest ->
+                  try
+                    let idx = String.index s '{' in
+                    if idx + 1 < String.length s && s.[idx+1] = '}' then
+                      let before = String.sub s 0 idx in
+                      let after = String.sub s (idx + 2) (String.length s - idx - 2) in
+                      format_string after rest (acc ^ before ^ (string_of_val arg))
+                    else
+                      format_string (String.sub s (idx + 1) (String.length s - idx - 1)) args (acc ^ String.sub s 0 (idx + 1))
+                  with Not_found -> acc ^ s
+            in
+            let formatted = format_string fmt_str arg_vals "" in
+            if is_nl then print_endline formatted else print_string formatted;
+            VUnit
+          ) else (
+            let arg = eval_expr env (List.hd args) in
+            print_val stdout is_nl arg;
+            VUnit
+          )
         ) else if resolved_path = ["std"; "io"; "eprintln"] || resolved_path = ["std"; "io"; "eprint"] then (
           let is_nl = resolved_path = ["std"; "io"; "eprintln"] in
-          let arg = eval_expr env (List.hd args) in
-          print_val stderr is_nl arg;
-          VUnit
+          if List.length args > 1 then (
+            let fmt_str = match eval_expr env (List.hd args) with VStr s -> s | _ -> raise (EvalError "Expected string format") in
+            let arg_vals = List.map (eval_expr env) (List.tl args) in
+            let rec format_string s args acc =
+              match args with
+              | [] -> acc ^ s
+              | arg :: rest ->
+                  try
+                    let idx = String.index s '{' in
+                    if idx + 1 < String.length s && s.[idx+1] = '}' then
+                      let before = String.sub s 0 idx in
+                      let after = String.sub s (idx + 2) (String.length s - idx - 2) in
+                      format_string after rest (acc ^ before ^ (string_of_val arg))
+                    else
+                      format_string (String.sub s (idx + 1) (String.length s - idx - 1)) args (acc ^ String.sub s 0 (idx + 1))
+                  with Not_found -> acc ^ s
+            in
+            let formatted = format_string fmt_str arg_vals "" in
+            if is_nl then prerr_endline formatted else prerr_string formatted;
+            VUnit
+          ) else (
+            let arg = eval_expr env (List.hd args) in
+            print_val stderr is_nl arg;
+            VUnit
+          )
         ) else if resolved_path = ["std"; "io"; "read_line"] then (
           try VStr (read_line ()) with End_of_file -> VStr ""
         ) else if resolved_path = ["std"; "fs"; "read_file"] then (
@@ -604,19 +667,32 @@ let rec eval_expr env e =
                   (match (IntMap.find ptr !heap).data with
                   | HOk _ when name = "Ok" -> true, env
                   | HErr _ when name = "Err" -> true, env
+                  | HEnum (_, vname, _) when vname = name -> true, env
                   | _ -> false, env)
-              | PVariant (name, Some [p]), VPtr ptr -> 
+              | PVariant (name, Some pats), VPtr ptr -> 
                   (match (IntMap.find ptr !heap).data with
                   | HOk inner when name = "Ok" -> 
-                      (match p.item with
+                      (match (List.hd pats).item with
                       | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
                       | PWildcard -> true, env
                       | _ -> false, env)
                   | HErr inner when name = "Err" -> 
-                      (match p.item with
+                      (match (List.hd pats).item with
                       | PIdent id -> true, { env with vars = StringMap.add id (ref inner) env.vars }
                       | PWildcard -> true, env
                       | _ -> false, env)
+                  | HEnum (_, vname, args) when vname = name ->
+                      let rec match_args ps vs env_acc =
+                        match ps, vs with
+                        | [], [] -> true, env_acc
+                        | p::ps_rest, v::vs_rest ->
+                            (match p.item with
+                            | PIdent id -> match_args ps_rest vs_rest { env_acc with vars = StringMap.add id (ref v) env_acc.vars }
+                            | PWildcard -> match_args ps_rest vs_rest env_acc
+                            | _ -> false, env_acc)
+                        | _ -> false, env_acc
+                      in
+                      match_args pats args env
                   | _ -> false, env)
               | PLit (LInt (n, _)), VInt i  -> Int64.equal n i, env
               | PLit (LFloat (f, _)), VFloat g -> f = g, env

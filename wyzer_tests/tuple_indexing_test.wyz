@@ -1,4 +1,4 @@
 fn main() {
-    let x: u32 = (10u32, "hello", true).0;
+    let x: u32 = (10, "hello", true).0;
     std::io::println(x);
 }

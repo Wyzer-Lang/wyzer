@@ -15,7 +15,7 @@ pub enum State: u8 (0) {
     OFF
 }
 
-pub global MAGIC_NUMBER: u32 = 42u32;
+pub global MAGIC_NUMBER: u32 = 42;
 
 fn main() {
     public_func();

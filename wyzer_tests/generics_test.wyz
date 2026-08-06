@@ -7,11 +7,11 @@ generic<T> fn unwrap_or_zero(w: generic<T> Wrapper, zero: T) -> T {
 }
 
 fn main() {
-  let w: generic<u32> Wrapper = generic<u32> Wrapper { val: 42u32 };
-  let v: u32 = generic<u32> unwrap_or_zero(w, 0u32);
+  let w: generic<u32> Wrapper = generic<u32> Wrapper { val: 42 };
+  let v: u32 = generic<u32> unwrap_or_zero(w, 0);
   
   let empty_arr: [u32] = [];
-  let num_arr: [u32] = [1u32, 2u32, 3u32];
+  let num_arr: [u32] = [1, 2, 3];
 
   // TODO: we need to print things to verify them, but we don't have println yet!
   // At least the compiler will typecheck it!

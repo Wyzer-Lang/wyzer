@@ -17,7 +17,7 @@ impl Show for Point {
 }
 
 fn main() {
-    let p: Point = Point { x: 10u32, y: 20u32 };
+    let p: Point = Point { x: 10, y: 20 };
     let s: str = p.to_string(); // Static dispatch via method call!
     std::io::println(s);
 }

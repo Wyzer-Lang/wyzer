@@ -1,12 +1,12 @@
 fn process(r: Result<u32, str>) -> u32 {
     match r {
         Ok(v) => v,
-        Err(e) => 0u32
+        Err(e) => 0
     }
 }
 
 fn main() {
-    let r: Result<u32, str> = Ok(42u32);
+    let r: Result<u32, str> = Ok(42);
     let res: u32 = process(r);
     std::io::println(res);
 }

@@ -209,8 +209,8 @@ let parse_format_string (s: string) : string * (Ast.expr * string) list =
 
 module ExprId = struct
   type t = Ast.expr
-  let equal (a: Ast.expr) (b: Ast.expr) = a == b
-  let hash (a: Ast.expr) = Hashtbl.hash a
+  let equal (a: Ast.expr) (b: Ast.expr) = a = b
+  let hash (a: Ast.expr) = Hashtbl.hash (a.span, a.item)
 end
 module ExprMap = Hashtbl.Make(ExprId)
 let typed_ast_map : Ast.typ ExprMap.t = ExprMap.create 1024
@@ -569,11 +569,37 @@ let rec check_expr_impl env e expected_typ_opt =
       in
       if List.length resolved_path > 0 && List.hd resolved_path = "std" then (
         if resolved_path = ["std"; "io"; "println"] || resolved_path = ["std"; "io"; "print"] || resolved_path = ["std"; "io"; "eprintln"] || resolved_path = ["std"; "io"; "eprint"] then (
-          if List.length args <> 1 then raise (TypeError ("print/println expects 1 argument"));
-          let arg_t, env_next = check_expr env (List.hd args) None in
-          if not (is_printable arg_t) then
-            raise (TypeError "print/println argument must be printable");
-          TBase TUnit, env_next
+          if List.length args = 0 then raise (TypeError ("print/println expects at least 1 argument"));
+          let arg1_t, env_next = check_expr env (List.hd args) None in
+          
+          if List.length args > 1 then (
+            (match (List.hd args).item with
+            | ELit (LStr fmt_str) ->
+                let rec count_placeholders s idx count =
+                  try
+                    let i = String.index_from s idx '{' in
+                    if i + 1 < String.length s && s.[i+1] = '}' then
+                      count_placeholders s (i + 2) (count + 1)
+                    else
+                      count_placeholders s (i + 1) count
+                  with Not_found -> count
+                in
+                let num_placeholders = count_placeholders fmt_str 0 0 in
+                if num_placeholders <> List.length args - 1 then
+                  raise (TypeError (Printf.sprintf "print/println format string expects %d arguments, but %d were provided" num_placeholders (List.length args - 1)))
+            | _ -> raise (TypeError "When printing multiple arguments, the first argument must be a string literal format string"));
+            
+            let final_env = List.fold_left (fun e arg ->
+              let t, e' = check_expr e arg None in
+              if not (is_printable t) then raise (TypeError "print/println argument must be printable");
+              e'
+            ) env_next (List.tl args) in
+            TBase TUnit, final_env
+          ) else (
+            if not (is_printable arg1_t) then
+              raise (TypeError "print/println argument must be printable");
+            TBase TUnit, env_next
+          )
         ) else if resolved_path = ["std"; "io"; "read_line"] then (
           if List.length args <> 0 then raise (TypeError "std::io::read_line expects 0 arguments");
           TBase TStr, env

@@ -1,5 +1,5 @@
 fn get_value() -> u32 {
-    let x: u32 = 10u32;
+    let x: u32 = 10;
     // implicit return
     x
 }

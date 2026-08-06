@@ -125,27 +125,8 @@ let bp_infix = function
   | LBRACKET -> (120, 121)
   | _ -> (-1, -1)
 
-let parse_int_suffix p =
-  match peek p with
-  | U8 -> next_token p; Some TU8
-  | U16 -> next_token p; Some TU16
-  | U32 -> next_token p; Some TU32
-  | U64 -> next_token p; Some TU64
-  | U128 -> next_token p; Some TU128
-  | I8 -> next_token p; Some TI8
-  | I16 -> next_token p; Some TI16
-  | I32 -> next_token p; Some TI32
-  | I64 -> next_token p; Some TI64
-  | I128 -> next_token p; Some TI128
-  | _ -> None
-
-let parse_float_suffix p =
-  match peek p with
-  | F16 -> next_token p; Some TF16
-  | F32 -> next_token p; Some TF32
-  | F64 -> next_token p; Some TF64
-  | F128 -> next_token p; Some TF128
-  | _ -> None
+let parse_int_suffix _p = None
+let parse_float_suffix _p = None
 
 let parse_literal p =
   match peek p with

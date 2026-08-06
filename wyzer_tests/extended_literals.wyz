@@ -12,10 +12,10 @@ fn main() {
     // ---------------------------------------------------------------
     // 1. Hex literals with explicit type suffixes
     // ---------------------------------------------------------------
-    let byte_max: u8  = 0xFFu8;          // 255
-    let short_val: u16 = 0x00FFu16;       // 255
-    let dead_beef: u32 = 0xDEADBEEFu32;  // 3735928559
-    let big_hex: u64  = 0xCAFEBABEu64;   // 3405691582
+    let byte_max: u8  = 0xFF;          // 255
+    let short_val: u16 = 0x00FF;       // 255
+    let dead_beef: u32 = 0xDEADBEEF;  // 3735928559
+    let big_hex: u64  = 0xCAFEBABE;   // 3405691582
 
     std::io::println(byte_max);
     std::io::println(short_val);
@@ -25,9 +25,9 @@ fn main() {
     // ---------------------------------------------------------------
     // 2. Binary literals with explicit type suffixes
     // ---------------------------------------------------------------
-    let nibble: u8  = 0b1010u8;          // 10
-    let byte_b: u8  = 0b11111111u8;      // 255
-    let word_b: u16 = 0b1111000011110000u16; // 61680
+    let nibble: u8  = 0b1010;          // 10
+    let byte_b: u8  = 0b11111111;      // 255
+    let word_b: u16 = 0b1111000011110000; // 61680
 
     std::io::println(nibble);
     std::io::println(byte_b);
@@ -49,8 +49,8 @@ fn main() {
     // 4. Hex / binary in arithmetic expressions
     // ---------------------------------------------------------------
     let sum: u32  = 0xFF + 0b1010;       // 255 + 10 = 265
-    let diff: u32 = 0xFFu32 - 0b1111u32; // 255 - 15 = 240
-    let prod: u32 = 0x10u32 * 0b11u32;   // 16 * 3  = 48
+    let diff: u32 = 0xFF - 0b1111; // 255 - 15 = 240
+    let prod: u32 = 0x10 * 0b11;   // 16 * 3  = 48
 
     std::io::println(sum);
     std::io::println(diff);
@@ -59,10 +59,10 @@ fn main() {
     // ---------------------------------------------------------------
     // 5. Bitwise operations (natural home for hex/binary)
     // ---------------------------------------------------------------
-    let and_result: u32 = 0xFF00u32 & 0x0FFFu32;  // 0x0F00 = 3840
-    let or_result:  u32 = 0xFF00u32 | 0x00FFu32;  // 0xFFFF = 65535
-    let shl_result: u32 = 0b0001u32 << 4;          // 16
-    let shr_result: u32 = 0x80u32 >> 3;            // 16
+    let and_result: u32 = 0xFF00 & 0x0FFF;  // 0x0F00 = 3840
+    let or_result:  u32 = 0xFF00 | 0x00FF;  // 0xFFFF = 65535
+    let shl_result: u32 = 0b0001 << 4;          // 16
+    let shr_result: u32 = 0x80 >> 3;            // 16
 
     std::io::println(and_result);
     std::io::println(or_result);
@@ -79,7 +79,7 @@ fn main() {
         _    => std::io::println(1)
     };
 
-    let flags: u8 = 0b1010u8;
+    let flags: u8 = 0b1010;
     match (flags) {
         0b0000 => std::io::println(0),
         0b1010 => std::io::println(10),
@@ -98,7 +98,7 @@ fn main() {
     // ---------------------------------------------------------------
     // 8. f-string interpolation of hex-/binary-valued variables
     // ---------------------------------------------------------------
-    let port: u32 = 0x1F90u32;  // 8080
+    let port: u32 = 0x1F90;  // 8080
     std::io::println(f"Port number: {port}");
 
     // ---------------------------------------------------------------
