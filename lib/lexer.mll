@@ -5,10 +5,12 @@ exception SyntaxError of string
 
 let white = [' ' '\t' '\r']+
 let newline = '\n'
-let digit = ['0'-'9']
-let letter = ['a'-'z' 'A'-'Z' '_']
-let ident = letter (letter | digit)*
+let digit   = ['0'-'9']
+let letter  = ['a'-'z' 'A'-'Z' '_']
+let ident   = letter (letter | digit)*
 let float_lit = digit+ '.' digit* | '.' digit+
+let hex_lit = '0' ['x' 'X'] ['0'-'9' 'a'-'f' 'A'-'F']+
+let bin_lit = '0' ['b' 'B'] ['0' '1']+
 
 rule read = parse
   | white { read lexbuf }
@@ -91,6 +93,8 @@ rule read = parse
   | "@=" { AT_EQ }
   | "$=" { DOLLAR_EQ }
   | float_lit as f { FLOAT (float_of_string f) }
+  | hex_lit as h { INT (Int64.of_string h) }
+  | bin_lit as b { INT (Int64.of_string b) }
   | digit+ as n { INT (Int64.of_string n) }
   | '"' { read_string (Buffer.create 17) lexbuf }
   | "f\"" { read_fstring (Buffer.create 17) lexbuf }

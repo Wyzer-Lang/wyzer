@@ -618,6 +618,11 @@ let rec eval_expr env e =
                       | PWildcard -> true, env
                       | _ -> false, env)
                   | _ -> false, env)
+              | PLit (LInt (n, _)), VInt i  -> Int64.equal n i, env
+              | PLit (LFloat (f, _)), VFloat g -> f = g, env
+              | PLit (LBool b), VBool b2   -> b = b2, env
+              | PLit (LStr s), VStr s2     -> s = s2, env
+              | PLit (LChar c), VChar c2   -> c = c2, env
               | _ -> false, env
             in
             if matches then eval_expr env_ext e_arm else try_match rest

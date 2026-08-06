@@ -47,6 +47,32 @@ fn process(status: Status) {
 }
 ```
 
+### Matching Integer Literals
+
+`match` can also branch directly on integer values, including hex and binary literals. This is especially useful when working with status codes, bitmasks, or hardware registers where those bases are more readable than decimal.
+
+```wyzer
+fn main() {
+    // Matching against hex literals
+    let status: u32 = 0xFF;
+    match (status) {
+        0x00 => std::io::println("no error"),
+        0xFF => std::io::println("all flags set"),
+        _    => std::io::println("other")
+    };
+
+    // Matching against binary literals
+    let flags: u8 = 0b1010u8;
+    match (flags) {
+        0b0000 => std::io::println("all clear"),
+        0b1010 => std::io::println("bits 1 and 3 set"),
+        _      => std::io::println("other pattern")
+    };
+}
+```
+
+Decimal, hex, and binary literals are interchangeable in match arms — `0xFF`, `255`, and `0b11111111` all match the same value.
+
 ## Loops
 Wyzer has basic loops to repeat code.
 
