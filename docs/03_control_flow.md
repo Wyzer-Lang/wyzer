@@ -53,7 +53,6 @@ fn process(status: Status) {
 
 ```wyzer
 fn main() {
-    // Matching against hex literals
     let status: u32 = 0xFF;
     match (status) {
         0x00 => std::io::println("no error"),
@@ -61,7 +60,6 @@ fn main() {
         _    => std::io::println("other")
     };
 
-    // Matching against binary literals
     let flags: u8 = 0b1010;
     match (flags) {
         0b0000 => std::io::println("all clear"),
@@ -70,8 +68,6 @@ fn main() {
     };
 }
 ```
-
-Decimal, hex, and binary literals are interchangeable in match arms — `0xFF`, `255`, and `0b11111111` all match the same value.
 
 ## Loops
 Wyzer has basic loops to repeat code.
