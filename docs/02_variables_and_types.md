@@ -49,12 +49,12 @@ You can combine any base with a type suffix, or leave it off and let the compile
 fn main() {
     // Suffixed — type is explicit
     let byte_max: u8  = 0xFFu8;         // hex, 255
-    let nibble:   u8  = 0b1010u8;       // binary, 10
+    let nibble:   u8  = 0b1010;           // binary, 10
     let port:     u32 = 0x1F90u32;      // hex, 8080
 
     // Unsuffixed — type inferred from the annotation
     let status:   u32 = 0xFF;           // same as 255u32
-    let flags:    u8  = 0b11110000u8;   // same as 240u8
+    let flags:    u8  = 0b11110000;      // same as 240
 
     // Unsuffixed with no annotation — defaults to i32
     let code = 0xFF;                    // i32, value 255
@@ -67,7 +67,7 @@ Hex and binary literals work everywhere a decimal literal does, including arithm
 fn main() {
     let mask:   u32 = 0xFF00u32 & 0x0FFFu32;  // 3840
     let merged: u32 = 0xFF00u32 | 0x00FFu32;  // 65535
-    let shifted: u32 = 0b0001u32 << 4;         // 16
+    let shifted: u32 = 0b0001 << 4;            // 16
 }
 ```
 

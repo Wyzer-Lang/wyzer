@@ -62,7 +62,7 @@ fn main() {
     };
 
     // Matching against binary literals
-    let flags: u8 = 0b1010u8;
+    let flags: u8 = 0b1010;
     match (flags) {
         0b0000 => std::io::println("all clear"),
         0b1010 => std::io::println("bits 1 and 3 set"),

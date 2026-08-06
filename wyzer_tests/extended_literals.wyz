@@ -125,13 +125,4 @@ fn main() {
     //   -1        (neg_hex)
     //   -1        (neg_bin)
     //   Port number: 8080
-    //
-    // Malformed literal error example (should NOT be added to this file):
-    //   let bad = 0xG12;
-    //   → Error [E001]: unexpected token
-    //      ╭─▶ extended_literals.wyz:N:M
-    //      │
-    //      │   let bad = 0xG12;
-    //      │              ╰ unexpected token `xG12`
-    // ---------------------------------------------------------------
 }
