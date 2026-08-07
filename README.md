@@ -4,7 +4,7 @@
 > "Simplicity is not the absence of power. It is power without pretense."
                                                                 ~ Atiksh Sharma
 
-Feel free to use the prentensious quote anywhere lol.
+Feel free to use the pretentious quote anywhere lol.
 
 ---
 Wyzer is a statically typed, compiled, resource-oriented programming language with integrated distributed safety via choreographic programming and a perceus memory model
