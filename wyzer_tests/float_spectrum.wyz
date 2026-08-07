@@ -1,0 +1,14 @@
+fn add_f32(a: f32, b: f32) -> f32 { a + b }
+
+fn main() {
+    let _f_half: f16 = 3.14;
+    let f_single: f32 = 3.1415;
+    let _f_double: f64 = 3.141592;
+    let _f_quad: f128 = 3.14159265;
+    
+    // f8 is supported for storage layout, but arithmetic requires LLVM support that doesn't exist yet, 
+    // but the type itself should parse and typecheck properly!
+    
+    let _res = add_f32(f_single, 2.0); // Float math
+    std::io::println("Float Math Executed!");
+}

@@ -41,6 +41,11 @@ let rec generate_type (t: typ) : lltype =
       | TBase TU64 | TBase TI64 | TBase TUSize | TBase TISize -> i64_type
       | TBase TU8 | TBase TI8 -> i8_type context
       | TBase TU16 | TBase TI16 -> i16_type context
+      | TBase TF8 -> i8_type context
+      | TBase TF16 -> i16_type context
+      | TBase TF32 -> float_type context
+      | TBase TF64 -> double_type context
+      | TBase TF128 -> fp128_type context
       | TBase TBool -> bool_type
       | TBase TStr -> str_type
       | TBase TChar -> i32_type
@@ -115,6 +120,8 @@ let rec type_of_expr (e: expr) : typ =
       (match e.item with
       | ELit (LInt (_, Some t)) -> wrap (TBase t)
       | ELit (LInt (_, None)) -> wrap (TBase TU32)
+      | ELit (LFloat (_, Some t)) -> wrap (TBase t)
+      | ELit (LFloat (_, None)) -> wrap (TBase TF64)
       | ELit (LBool _) -> wrap (TBase TBool)
       | ELit (LStr _) -> wrap (TBase TStr)
       | ELit (LChar _) -> wrap (TBase TChar)
@@ -138,8 +145,17 @@ let rec type_of_expr (e: expr) : typ =
 let rec generate_expr (e: expr) : llvalue =
   match e.item with
   | ELit (LInt (i, t)) -> 
-      let llty = match t with Some TU64 | Some TI64 -> i64_type | Some TU8 | Some TI8 -> i8_type context | Some TU16 | Some TI16 -> i16_type context | _ -> i32_type in
-      const_int llty (Int64.to_int i)
+      let ty = match t with
+        | Some ty -> generate_type { Ast.item = TBase ty; span = Ast.dummy_span }
+        | None -> i32_type
+      in
+      const_int ty (Int64.to_int i)
+  | ELit (LFloat (f, t)) ->
+      let ty = match t with
+        | Some ty -> generate_type { Ast.item = TBase ty; span = Ast.dummy_span }
+        | None -> double_type context
+      in
+      const_float ty f
   | ELit (LBool b) -> const_int bool_type (if b then 1 else 0)
   | ELit (LStr s) -> build_global_stringptr s "strtmp" builder
   | ELit (LChar c) -> const_int (i32_type) (Char.code c)
@@ -153,17 +169,21 @@ let rec generate_expr (e: expr) : llvalue =
   | EBinOp (e1, op, e2) ->
       let v1 = generate_expr e1 in
       let v2 = generate_expr e2 in
+      let is_float_op = match Llvm.classify_type (type_of v1) with
+        | Llvm.TypeKind.Half | Llvm.TypeKind.Float | Llvm.TypeKind.Double | Llvm.TypeKind.Fp128 -> true
+        | _ -> false
+      in
       (match op with
-      | Add -> build_add v1 v2 "addtmp" builder
-      | Sub -> build_sub v1 v2 "subtmp" builder
-      | Mul -> build_mul v1 v2 "multmp" builder
-      | Div -> build_sdiv v1 v2 "sdivtmp" builder
-      | Eq -> build_icmp Icmp.Eq v1 v2 "eqtmp" builder
-      | Neq -> build_icmp Icmp.Ne v1 v2 "neqtmp" builder
-      | Lt -> build_icmp Icmp.Slt v1 v2 "lttmp" builder
-      | Gt -> build_icmp Icmp.Sgt v1 v2 "gttmp" builder
-      | Lte -> build_icmp Icmp.Sle v1 v2 "ltetmp" builder
-      | Gte -> build_icmp Icmp.Sge v1 v2 "gtetmp" builder
+      | Add -> if is_float_op then build_fadd v1 v2 "faddtmp" builder else build_add v1 v2 "addtmp" builder
+      | Sub -> if is_float_op then build_fsub v1 v2 "fsubtmp" builder else build_sub v1 v2 "subtmp" builder
+      | Mul -> if is_float_op then build_fmul v1 v2 "fmultmp" builder else build_mul v1 v2 "multmp" builder
+      | Div -> if is_float_op then build_fdiv v1 v2 "fdivtmp" builder else build_sdiv v1 v2 "sdivtmp" builder
+      | Eq -> if is_float_op then build_fcmp Fcmp.Oeq v1 v2 "feqtmp" builder else build_icmp Icmp.Eq v1 v2 "eqtmp" builder
+      | Neq -> if is_float_op then build_fcmp Fcmp.One v1 v2 "fneqtmp" builder else build_icmp Icmp.Ne v1 v2 "neqtmp" builder
+      | Lt -> if is_float_op then build_fcmp Fcmp.Olt v1 v2 "flttmp" builder else build_icmp Icmp.Slt v1 v2 "lttmp" builder
+      | Gt -> if is_float_op then build_fcmp Fcmp.Ogt v1 v2 "fgttmp" builder else build_icmp Icmp.Sgt v1 v2 "gttmp" builder
+      | Lte -> if is_float_op then build_fcmp Fcmp.Ole v1 v2 "fltetmp" builder else build_icmp Icmp.Sle v1 v2 "ltetmp" builder
+      | Gte -> if is_float_op then build_fcmp Fcmp.Oge v1 v2 "fgtetmp" builder else build_icmp Icmp.Sge v1 v2 "gtetmp" builder
       | And -> build_and v1 v2 "andtmp" builder
       | Or -> build_or v1 v2 "ortmp" builder
       | Shl -> build_shl v1 v2 "shltmp" builder

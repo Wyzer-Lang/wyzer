@@ -1,0 +1,6 @@
+extern "C" fn puts(s: str) -> u32;
+
+fn main() {
+    let msg = "Hello from libc via extern C!";
+    puts(msg);
+}

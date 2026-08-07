@@ -24,7 +24,7 @@ type 'a loc = {
 type base_type =
   | TU8 | TU16 | TU32 | TU64 | TU128 | TUSize
   | TI8 | TI16 | TI32 | TI64 | TI128 | TISize
-  | TF16 | TF32 | TF64 | TF128
+  | TF8 | TF16 | TF32 | TF64 | TF128
   | TBool | TStr | TUnit | TChar
   | TCustom of string
   | TGenericApp of typ list * base_type
@@ -133,6 +133,7 @@ type fn_decl = {
   ret_typ: typ option;
   role: string option;
   is_extern: bool;
+  abi: string option;
   body: block option;
 }
 [@@deriving show, eq]
@@ -233,10 +234,10 @@ type program = {
 let rec fmt_base_type = function
   | TU8    -> "u8"    | TU16   -> "u16"  | TU32   -> "u32"
   | TU64   -> "u64"   | TU128  -> "u128" | TUSize -> "usize"
-  | TI8    -> "i8"    | TI16   -> "i16"  | TI32   -> "i32"
-  | TI64   -> "i64"   | TI128  -> "i128" | TISize -> "isize"
-  | TF16   -> "f16"   | TF32   -> "f32"  | TF64   -> "f64"  | TF128  -> "f128"
-  | TBool  -> "bool"  | TStr   -> "str"  | TUnit  -> "()"   | TChar  -> "char"
+  | TI8    -> "i8"    | TI16   -> "i16"   | TI32   -> "i32"   | TI64   -> "i64"   | TI128  -> "i128"
+  | TF8    -> "f8"    | TF16   -> "f16"   | TF32   -> "f32"   | TF64   -> "f64"   | TF128  -> "f128"
+  | TISize -> "isize" | TBool  -> "bool"  | TStr   -> "str"
+  | TUnit  -> "()"   | TChar  -> "char"
   | TCustom s -> s
   | TGenericApp (args, inner) ->
       fmt_base_type inner ^ "<" ^ String.concat ", " (List.map fmt_typ args) ^ ">"

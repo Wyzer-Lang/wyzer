@@ -157,6 +157,7 @@ let rec parse_base_type p =
   | I64 -> next_token p; TI64
   | I128 -> next_token p; TI128
   | ISIZE -> next_token p; TISize
+  | F8 -> next_token p; TF8
   | F16 -> next_token p; TF16
   | F32 -> next_token p; TF32
   | F64 -> next_token p; TF64
@@ -647,6 +648,10 @@ let rec parse_item p =
         (match peek p with
         | EXTERN ->
             next_token p;
+            let abi = match peek p with
+              | STRING_VAL s -> next_token p; Some s
+              | _ -> None
+            in
             expect p FN;
             let name = parse_ident p in
             expect p LPAREN;
@@ -655,7 +660,7 @@ let rec parse_item p =
             let role = if consume p AT then Some (parse_ident p) else None in
             let ret_typ = if consume p MINUS then (expect p GT; Some (parse_typ p)) else None in
             expect p SEMICOLON;
-            IFn { is_pub; name; params; ret_typ; role; is_extern = true; body = None }
+            IFn { is_pub; name; params; ret_typ; role; is_extern = true; abi; body = None }
         | FN ->
             next_token p;
             let name = parse_ident p in
@@ -665,7 +670,7 @@ let rec parse_item p =
             let role = if consume p AT then Some (parse_ident p) else None in
             let ret_typ = if consume p MINUS then (expect p GT; Some (parse_typ p)) else None in
             let body = parse_block p in
-            IFn { is_pub; name; params; ret_typ; role; is_extern = false; body = Some body }
+            IFn { is_pub; name; params; ret_typ; role; is_extern = false; abi = None; body = Some body }
         | ENUM ->
             next_token p;
             let name = parse_ident p in

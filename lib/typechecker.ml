@@ -61,8 +61,8 @@ let is_int_type t = match t.item with
   | _ -> false
 
 let is_float_type_t t = match t.item with
-  | TBase TF16 | TBase TF32 | TBase TF64 | TBase TF128 -> true
-  | TRole ({ item = TBase TF16; _ }, _) | TRole ({ item = TBase TF32; _ }, _)
+  | TBase TF8 | TBase TF16 | TBase TF32 | TBase TF64 | TBase TF128 -> true
+  | TRole ({ item = TBase TF8; _ }, _) | TRole ({ item = TBase TF16; _ }, _) | TRole ({ item = TBase TF32; _ }, _)
   | TRole ({ item = TBase TF64; _ }, _) | TRole ({ item = TBase TF128; _ }, _) -> true
   | _ -> false
 
@@ -91,7 +91,7 @@ let rec is_printable t =
 let rec is_copy_type t =
   match t.item with
   | TRole (inner, _) -> is_copy_type inner
-  | TBase (TU8 | TU16 | TU32 | TU64 | TU128 | TUSize | TI8 | TI16 | TI32 | TI64 | TI128 | TISize | TF16 | TF32 | TF64 | TF128 | TBool | TChar | TStr | TUnit) -> true
+  | TBase (TU8 | TU16 | TU32 | TU64 | TU128 | TUSize | TI8 | TI16 | TI32 | TI64 | TI128 | TISize | TF8 | TF16 | TF32 | TF64 | TF128 | TBool | TChar | TStr | TUnit) -> true
   | TBase (TCustom _) -> true
   | TArray _ -> true
   | _ -> false
@@ -140,8 +140,8 @@ let rec types_compatible expected actual =
       types_compatible a1 a2
   | TBase t1, TBase t2 ->
       if t1 = t2 then true
-      else if (match t1 with TU8|TU16|TU32|TU64|TU128|TUSize|TI8|TI16|TI32|TI64|TI128|TISize|TF16|TF32|TF64|TF128 -> true | _ -> false) &&
-              (match t2 with TU8|TU16|TU32|TU64|TU128|TUSize|TI8|TI16|TI32|TI64|TI128|TISize|TF16|TF32|TF64|TF128 -> true | _ -> false) then true
+      else if (match t1 with TU8|TU16|TU32|TU64|TU128|TUSize|TI8|TI16|TI32|TI64|TI128|TISize|TF8|TF16|TF32|TF64|TF128 -> true | _ -> false) &&
+              (match t2 with TU8|TU16|TU32|TU64|TU128|TUSize|TI8|TI16|TI32|TI64|TI128|TISize|TF8|TF16|TF32|TF64|TF128 -> true | _ -> false) then true
       else false
   | _, _ -> false
 
@@ -175,7 +175,7 @@ let is_integer_type = function
   | _ -> false
 
 let is_float_type = function
-  | TF16 | TF32 | TF64 | TF128 -> true
+  | TF8 | TF16 | TF32 | TF64 | TF128 -> true
   | _ -> false
 
 let is_numeric_type t = is_integer_type t || is_float_type t
@@ -365,7 +365,7 @@ let rec check_expr_impl env e expected_typ_opt =
             | other -> other
           in
           (match unwrap_expected with
-          | Some { item = TBase (TF16 | TF32 | TF64 | TF128 as t); _ } -> TBase t, env
+          | Some { item = TBase (TF8 | TF16 | TF32 | TF64 | TF128 as t); _ } -> TBase t, env
           | _ -> TBase TF64, env))
   | ELit (LBool _) -> TBase TBool, env
   | ELit (LStr _) -> TBase TStr, env
