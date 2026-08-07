@@ -172,3 +172,6 @@ Assistance provided by AI
 - AI was used to generate commit messages
 - AI was used for research (understanding choreographic programming, perceus memory model, etc closely)
 - AI was used for brand designing, i thank AI for providing me a wonderful number of ideas to help me design Wyzer's Logo :)
+
+## Notable Examples
+donut.wyz: famous torous (also known as a donut) rewritten in wyzer https://github.com/rudywasfound/donut.wyz
