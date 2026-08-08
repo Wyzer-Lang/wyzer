@@ -4,7 +4,7 @@ Wyzer is a statically typed, compiled, resource-oriented programming language wi
 > "Simplicity is not the absence of power. It is power without pretense."
 >                                                                 ~ Atiksh Sharma
 
---
+
 **What is Choreographic Programming?**
 In traditional distributed programming, you write separate code for the client and the server, and hope their communication protocols match up. Choreographic programming allows you to write a single, unified view of the entire distributed system. The compiler then mathematically projects this single script into deadlock-free, independent binaries for each physical node (e.g., Client and Server).
 
@@ -22,7 +22,7 @@ Perceus is a fast, deterministic memory management strategy that avoids the unpr
 - **Avoid hidden magic:** Network transfers happen through explicit assignment, keeping the control flow readable and obvious.
 - **C ABI compatibility:** Built for systems programming and seamless interoperability.
 
---
+---
 
 ## Quick Example: Distributed Key-Value Store
 
