@@ -54,6 +54,16 @@ The compiler then uses **Perceus reference counting**:
 ### Why this instead of Rust's borrow checker
 Perceus does not force you to write lifetime rules. You write normal functional code. The compiler figures out the rest and only does quick checks when running if needed. The trade-off: Rust is always fast but hard to write. Wyzer might be slightly slower sometimes but is much easier to write. **We still need to prove this works well in practice.**
 
+### 3.1 Cyclic References and Memory Leaks
+Because Perceus is a reference counting mechanism, a natural question is: **how does Wyzer handle cyclic data structures?**
+Our current stance: **Wyzer accepts memory leaks for cyclic structures.**
+We explicitly choose *not* to run a background cycle collector (tracing GC). A background cycle collector introduces unpredictable pauses, which violates our core goal of deterministic, low-latency execution for systems programming. If a developer builds a cyclic graph in Wyzer, those nodes will leak. In the future, we may explore type-level acyclicity restrictions or explicit weak references, but currently, cycles simply leak.
+
+### 3.2 Trade-offs: Latency vs. Safety
+Wyzer trades the absolute memory perfection of a tracing GC for predictable latency.
+- **Advantage**: Dropping a value in Perceus is deterministic and interleaved with execution. There are no stop-the-world pauses.
+- **Trade-off**: The developer must be conscious of cyclic structures. We provide memory safety (no use-after-free, no buffer overflows) without lifetime annotations, but we do not guarantee memory leak prevention if cycles are constructed.
+
 ### Further reading
 - Reinking, Xie, de Moura, Leijen: *"Perceus: Garbage Free Reference Counting with Reuse"*
 - Clean language's uniqueness typing

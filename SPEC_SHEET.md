@@ -507,13 +507,13 @@ The literal rule from Section 2 is defined here:
 
 ```ebnf
 literal     ::= int_lit | bool_lit | str_lit
-int_lit     ::= digit+ int_suffix
+int_lit     ::= digit+ int_suffix?
 int_suffix  ::= "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64"
 bool_lit    ::= "true" | "false"
 str_lit     ::= '"' char* '"'
 ```
 
-Typing uses standard rules. An integer has the type of its suffix, a boolean is `bool`, and a string is `str`. We do not infer sizes. An integer without a suffix is a compile error. This matches our "no hidden magic" rule.
+Typing uses standard rules. An integer has the type of its suffix if provided. If no suffix is provided, the compiler infers the size from the context. A boolean is `bool`, and a string is `str`.
 
 ---
 

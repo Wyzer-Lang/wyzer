@@ -176,7 +176,13 @@ and transform_block (live_out: StringSet.t) (b: block) : block =
     if not (StringSet.mem var ret_live) then { item = SDrop var; span = dummy_span } :: acc else acc
   ) locally_declared [] in
   
-  { stmts = stmts' @ drops; ret_expr = ret_expr' }
+  match ret_expr', drops with
+  | Some e, _::_ ->
+      let temp_name = "___ret_val_tmp" in
+      let temp_decl = { item = SDecl { kind = VLet; pat = { item = PIdent temp_name; span = e.span }; typ = None; init = e }; span = e.span } in
+      { stmts = stmts' @ (temp_decl :: drops); ret_expr = Some { item = EVar temp_name; span = e.span } }
+  | _ ->
+      { stmts = stmts' @ drops; ret_expr = ret_expr' }
 
 let rec transform_item (i: item) : item =
   match i.item with

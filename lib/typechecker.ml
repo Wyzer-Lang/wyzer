@@ -91,9 +91,7 @@ let rec is_printable t =
 let rec is_copy_type t =
   match t.item with
   | TRole (inner, _) -> is_copy_type inner
-  | TBase (TU8 | TU16 | TU32 | TU64 | TU128 | TUSize | TI8 | TI16 | TI32 | TI64 | TI128 | TISize | TF8 | TF16 | TF32 | TF64 | TF128 | TBool | TChar | TStr | TUnit) -> true
-  | TBase (TCustom _) -> true
-  | TArray _ -> true
+  | TBase (TU8 | TU16 | TU32 | TU64 | TU128 | TUSize | TI8 | TI16 | TI32 | TI64 | TI128 | TISize | TF8 | TF16 | TF32 | TF64 | TF128 | TBool | TChar | TUnit) -> true
   | _ -> false
 
 let rec unwrap_role t =
@@ -1125,7 +1123,9 @@ and check_stmt env stmt =
         | None -> None
       in
       (match typ_with_role with
-      | Some t -> if not (types_compatible t t_init) then raise (TypeError (Printf.sprintf "Type mismatch in declaration: expected %s, got %s" (Ast.fmt_typ t) (Ast.fmt_typ t_init)))
+      | Some t -> 
+          if not (types_compatible t t_init) && not (types_compatible (unwrap_role t) (unwrap_role t_init)) then 
+            raise (TypeError (Printf.sprintf "Type mismatch in declaration: expected %s, got %s" (Ast.fmt_typ t) (Ast.fmt_typ t_init)))
       | None -> ());
       let t_final = Option.value typ_with_role ~default:t_init in
       let t_final = add_role_if_missing t_final env1.current_role in
@@ -1142,7 +1142,8 @@ and check_stmt env stmt =
           (match StringMap.find_opt name env.vars with
             | Some (var_t, true, Live, _sp, _used_ref) ->
               let t_e, env1 = check_expr env e (Some var_t) in
-              if not (types_compatible var_t t_e) then raise (TypeError ("Type mismatch in assignment to " ^ name));
+              if not (types_compatible var_t t_e) && not (types_compatible (unwrap_role var_t) (unwrap_role t_e)) then 
+                raise (TypeError ("Type mismatch in assignment to " ^ name));
               { env1 with vars = StringMap.add name (t_e, true, Live, stmt.span, ref false) env1.vars }
           | Some (_, false, _, _, _) -> raise (TypeError ("Cannot reassign immutable variable " ^ name))
           | Some (_, _, Consumed, _sp, _used_ref) -> raise (TypeError ("Cannot reassign consumed variable " ^ name))
@@ -1222,6 +1223,13 @@ and check_stmt env stmt =
 
 and check_block env block =
   let env_final = List.fold_left check_stmt env block.stmts in
+  let env_ret, t_ret_opt = match block.ret_expr with
+  | Some e ->
+      let t_e, env_r = check_expr env_final e None in
+      env_r, Some t_e
+  | None ->
+      env_final, None
+  in
   StringMap.iter (fun name v2 ->
     let is_new = match StringMap.find_opt name env.vars with
       | Some v1 -> v1 != v2
@@ -1236,13 +1244,8 @@ and check_block env block =
           ~hints:[Printf.sprintf "if this is intentional, prefix it with an underscore: `_%s`" name]
           (Printf.sprintf "unused variable `%s`" name)
           span)
-  ) env_final.vars;
-  match block.ret_expr with
-  | Some e ->
-      let t_e, env_ret = check_expr env_final e None in
-      env_ret, Some t_e
-  | None ->
-      env_final, None
+  ) env_ret.vars;
+  env_ret, t_ret_opt
 
 let check_fn_decl env (fn: Ast.fn_decl) =
   let role_str = Option.value fn.role ~default:"Poly" in
@@ -1266,13 +1269,15 @@ let check_fn_decl env (fn: Ast.fn_decl) =
                   "implicit return type mismatch"
                   span))
         | Some t_e, None ->
-            let span = match b.ret_expr with Some e -> e.span | None -> dummy_span in
-            raise (Diagnostic.LocatedError (
-              Diagnostic.make_error
-                ~code:Error_codes.return_type_mismatch
-                ~label:(Printf.sprintf "expected unit, found `%s`" (Ast.fmt_typ t_e))
-                "cannot return a value from a unit function"
-                span))
+            if (unwrap_role t_e).item <> TBase TUnit then (
+              let span = match b.ret_expr with Some e -> e.span | None -> dummy_span in
+              raise (Diagnostic.LocatedError (
+                Diagnostic.make_error
+                  ~code:Error_codes.return_type_mismatch
+                  ~label:(Printf.sprintf "expected unit, found `%s`" (Ast.fmt_typ t_e))
+                  "cannot return a value from a unit function"
+                  span))
+            )
         | None, Some expected_t ->
             raise (Diagnostic.LocatedError (
               Diagnostic.make_error

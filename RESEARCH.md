@@ -94,74 +94,7 @@ Interrupt handlers stop the program at random times. They don't follow a strict 
 
 **Unsolved problem:** What if an interrupt handler needs to stop the script completely and restart it later? We are still researching this. See Section 7.
 
-#### 4.1 Metaprogramming as Choreography (The `@Comptime` Attribute)
-
-Traditional systems programming languages introduce entirely separate sub-languages or disjoint evaluation phases to handle metaprogramming (e.g., C preprocessor macros, Rust's `macro_rules!`, or Zig's `comptime`). This creates a semantic bifurcation: the language executed by the compiler at build-time is fundamentally distinct from the language executed by the runtime, often lacking the full type-safety and syntax of the host language.
-
-Initially, Wyzer attempted to solve this by treating the Compiler as just another node in the choreography (`transfer(..., Compiler)`). However, feedback indicated that metaprogramming semantics should be distinct from physical node transfers to prevent conceptual blurring between build-time and run-time architectures.
-
-Wyzer addresses this by introducing explicit **`@Comptime` evaluation**. By suffixing any expression with `@Comptime`, the AST evaluation engine intercepts the expression during the compilation phase, safely evaluates it using the native language semantics, and embeds the resulting constant directly into the AST before Endpoint Projection begins.
-
-```wyzer
-// By using @Comptime, the expression is evaluated instantly during the build.
-let interpolated: str@Client = f"Build Date: {get_date()}" @Comptime;
-```
-
-**Consequences of this Design**:
-1. **Unification of Syntax**: There is no separate "macro language." The exact same Wyzer code that runs on the Client or Server can be executed by the compiler.
-2. **Phase Separation**: The staging of computation (build-time vs. run-time) is elegantly made explicit by the `@Comptime` tag, creating a clear architectural boundary.
-3. **Safety**: The typechecker ensures that `@Comptime` expressions only depend on data available during compilation, preventing malformed macro expansions.
-
-This establishes a novel isomorphism between **multi-staged programming** and **choreographic programming**, heavily reducing the overall conceptual surface area of the language.
-
-### 4.2 Knowledge of Choice via AST Synthesis
-
-In classical distributed systems, **Knowledge of Choice** is a major source of deadlocks: if Node A evaluates a boolean condition that dictates the control flow of Node B, Node A must explicitly send the result of that condition to Node B, and Node B must block to receive it before branching. 
-
-Most choreographic languages (like Jolie or Chor) handle this limitation passively. They strictly enforce *Choreographic Trace Equivalence* at compile-time, acting as a verification tool that rejects the program with an "Asymmetric Choreography" error if the footprint of operations doesn't match perfectly, forcing the developer to manually write the required synchronization protocols.
-
-Wyzer elevates choreography from a passive verification tool to an **active compilation mechanism** via **Automatic Branch Synchronization (AST Synthesis)**.
-
-**Theoretical Formulation**: Given a branching expression $E = \text{if } C \text{ then } B_1 \text{ else } B_2$, where the condition $C$ is evaluated strictly on role $N_{evaluator}$ (i.e., $\text{role}(C) = N_{evaluator}$). Let $R_{participants}$ be the set of all roles that contain operations within the blocks $B_1 \cup B_2$.
-
-During Endpoint Projection (EPP), for any target role $N_{target} \in R_{participants} \setminus \{N_{evaluator}\}$:
-1. The projection engine automatically erases the evaluation of condition $C$ for $N_{target}$.
-2. It synthesizes a blocking network receive operation, yielding $C_{projected} \leftarrow \text{ENetRecv}(N_{evaluator})$.
-3. Simultaneously, for the evaluating node $N_{evaluator}$, the engine synthesizes $O(|R_{participants}| - 1)$ network send operations, injecting $\text{ENetSend}(N_{target}, C)$ identically into the preambles of both projected blocks $B_1$ and $B_2$.
-
-This allows developers to write a single, centralized control flow graph without explicitly reasoning about synchronization barriers:
-```wyzer
-// The condition is evaluated purely on the Client.
-let x: u32@Client = 10;
-if x > 5 {
-    // The Server executes this branch without explicit network code!
-    let msg: str@Server = "Greater!";
-    std::io::println(msg); 
-}
-```
-The compiler guarantees absolute trace equivalence by automatically constructing the required synchronization protocol directly into the AST, entirely removing deadlocks from the developer experience.
-
-**What does "without explicit network code" mean here?**
-In a traditional distributed system, the developer must manually write `send(true, Server)` on the Client and `recv(Client)` on the Server so the Server knows which branch to take. If the developer forgets, the system deadlocks. 
-In Wyzer, the developer writes *none* of that. The Endpoint Projection engine detects that the condition is on the Client and the body is on the Server, and **physically injects the network sends and receives into the final compiled binaries for you**.
-
-### 4.3 Zero-Cost Role Polymorphism
-
-To maximize code reusability across a distributed topology, Wyzer introduces **Role Inference**.
-Functions and variables that omit an explicit role annotation (e.g., `@Role`) are strictly inferred by the typechecker to belong to the `"Poly"` (Polymorphic) role.
-
-When a `"Poly"` function is invoked by a specific physical node, the projection engine performs zero-cost monomorphization. The execution of the function is seamlessly projected onto the calling node's local memory, and its return value is implicitly cast to the caller's role without requiring a `transfer` boundary or incurring any network serialization overhead. 
-
-This guarantees that standard library utilities (like math operations or data structure manipulations) remain completely topology-agnostic, while the compiler strictly forbids `"Poly"` functions from accessing node-specific global state.
-
-### 4.4 Distributed Linear Types (Perceus Integration)
-
-Wyzer's most critical innovation is the unification of local memory safety and distributed network safety under a single ownership paradigm.
-
-By running the Choreographic Typechecker concurrently with the **Perceus Reference Counting & FBIP (Fully In-Place Update)** memory model, the `transfer` operation acts as an absolute linear move. 
-When a value is `transfer`red across a role boundary, the typechecker marks the local reference as linearly `Consumed`. This structurally forbids double-frees and use-after-transfers across the network. If the `Client` attempts to access a variable that has already been dispatched over the network to the `Server`, the compiler halts with a predictable linear type error.
-
-Because Perceus enforces these strict linear aliasing rules locally, the choreographic engine can safely trust that a message dispatched over a physical TCP socket has a singular, exclusive owner upon deserialization, seamlessly uniting the local heap with the distributed topology.
+> **Note:** Sections regarding `@Comptime` Metaprogramming, Knowledge of Choice via AST Synthesis, Role Polymorphism, and Distributed Linear Types have been moved to the main [README.md](README.md) to make them immediately accessible to new visitors.
 
 ### Honest scope note
 Building an entire OS this way is a long-term goal. For now, we want to prove this works for regular programs (threads talking safely). This is useful on its own. Later, we can try it on kernels, high level softwares and hardware (CPUs, GPUs, FPGAs...).
