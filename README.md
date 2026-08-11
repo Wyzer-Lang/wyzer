@@ -124,16 +124,11 @@ fn update_name(user: User, new_name: str) -> User {
 
 ## Documentation & Community
 
-- **Language Design & Motivation:** [DESIGN.md](DESIGN.md)
-- **Research & Implementation Details:** [RESEARCH.md](RESEARCH.md)
-- **Official Documentation:**
-  1. [Introduction](docs/01_introduction.md)
-  2. [Variables and Types](docs/02_variables_and_types.md)
-  3. [Control Flow](docs/03_control_flow.md)
-  4. [Functions and Structs](docs/04_functions_and_structs.md)
-  5. [Memory Model](docs/05_memory_model.md)
+- Language Design & Motivation: [DESIGN.md](DESIGN.md)
+- Research & Implementation Details: [RESEARCH.md](RESEARCH.md)
+- Official Documentation: https://wyzer-lang.vercel.app/docs/foreword
 
-**Community:** Join our Discord server: https://discord.gg/RhpPhkTrVu
+Community: Join our Discord server: https://discord.gg/RhpPhkTrVu
 
 ## Notable Examples
-- **donut.wyz**: famous torus (also known as a donut) rewritten in wyzer https://github.com/rudywasfound/donut.wyz
+- **donut.wyz**: famous torus (also known as a donut) programmed in wyzer https://github.com/rudywasfound/donut.wyz
