@@ -131,4 +131,4 @@ fn update_name(user: User, new_name: str) -> User {
 Community: Join our Discord server: https://discord.gg/RhpPhkTrVu
 
 ## Notable Examples
-- **donut.wyz**: famous torus (also known as a donut) programmed in wyzer https://github.com/rudywasfound/donut.wyz
+- **donut.wyz**: donut.c reprogrammed in wyzer https://github.com/rudywasfound/donut.wyz
