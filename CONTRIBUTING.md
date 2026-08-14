@@ -67,7 +67,16 @@ Please make sure all tests pass before submitting a pull request, and consider a
 
 ## Code of Conduct
 
-By participating in this project, you agree to abide by our Code of Conduct. Please be respectful and considerate of others when communicating on issues or pull requests.
+- By participating in this project, you agree to abide by our Code of Conduct. Please be respectful and considerate of others when communicating on issues or pull requests.
+
+- **By contributing to this project, you agree to transfer all right, title, and interest
+in the copyright in the contribution that you own or control to the owner of this project.
+This is intended to protect the project from bad-faith copyright claims, including (but not
+limited to) DMCA takedown requests, which could severely harm the project and even potentially
+kill it entirely. This agreement may be used in a court of law as evidence of the parties'
+respective rights and obligations concerning the contribution in any applicable legal proceedings.
+You may be required to explicitly acknowledge this agreement in your contribution depending on
+the nature or significance of the contribution.**
 
 ### AI Usage
 Bringing technology to use is not an issue , it becomes an issue with how you use technology so here are the rules for using AI in this project
