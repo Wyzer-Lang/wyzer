@@ -21,7 +21,11 @@ Perceus is a fast, deterministic memory management strategy that avoids the unpr
 - No borrow checker
 - Deadlock-free by design
 - Avoid hidden magic
-- C ABI compatibility
+- C ABI compatibility  
+- ### Rules we follow
+  - Syntax to be kept concise avoiding it to be abbreviated
+  - Base Syntax should be kept minimal , everything extra must be in under `std` library
+  - Something shouldn't be made simpler beyond simple
 
 ---
 
