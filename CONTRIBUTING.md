@@ -79,7 +79,9 @@ You may be required to explicitly acknowledge this agreement in your contributio
 the nature or significance of the contribution.**
 
 ### AI Usage
-Bringing technology to use is not an issue , it becomes an issue with how you use technology so here are the rules for using AI in this project
+Bringing technology to use is not an issue , it becomes an issue with how you use technology so here are the rules for using AI in this project. 
+You're not carrying the heavy weight of a corporate job here , remember that you are contributing because you truely care about the language and want to be a part of it. You came with an interest of contributing and by all means do not pressure yourself to contribute to the project because you just want to maybe stamp this on your CV perhaps? At this project we prefer people to be honest and loyal, human written code also helps me defend it line by line against people who want to know the reasoning behind the logic of the code.
+
 - Refrain from using AI for coding wyzer as it can cause the language to be buggy as seen in the Linux kernel
 - If AI was used in contributing please mention where and how AI was used when you open the PR
 - AI can be used for understanding what's going on in the project
