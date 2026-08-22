@@ -772,19 +772,39 @@ let rec parse_item p =
     | _ -> error p "Expected item declaration"
   )
 
-let parse_import_decl p =
+let parse_import_item p =
   let start_pos = get_pos p in
-  expect p IMPORT;
-  let path = parse_module_path p in
+  let path = match peek p with
+    | STRING_VAL s -> next_token p; s
+    | _ -> error p "Expected string literal for import path"
+  in
   let alias = if consume p AS then Some (parse_ident p) else None in
-  expect p SEMICOLON;
   let end_pos = get_pos p in
   { path; alias; span = make_span start_pos end_pos }
+
+let parse_import_decls p =
+  expect p IMPORT;
+  if consume p LBRACE then
+    if peek p = RBRACE then (
+      next_token p;
+      expect p SEMICOLON;
+      []
+    ) else
+      let decls = parse_separated_list p COMMA parse_import_item in
+      expect p RBRACE;
+      expect p SEMICOLON;
+      decls
+  else
+    let decl = parse_import_item p in
+    expect p SEMICOLON;
+    [decl]
 
 let parse_program lexer lexbuf =
   let p = init_state lexer lexbuf in
   let rec parse_imports () =
-    if peek p = IMPORT then let first = parse_import_decl p in first :: parse_imports ()
+    if peek p = IMPORT then
+      let decls = parse_import_decls p in
+      decls @ parse_imports ()
     else []
   in
   let imports = parse_imports () in

@@ -13,7 +13,7 @@ Wyzer fixes this by tracking everything you create:
 ## Your First Program
 
 ```wyzer
-import std::io;
+import "std/io";
 
 fn main() {
     std::io::println("Hello, Wyzer!");

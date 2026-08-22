@@ -29,11 +29,11 @@ Crucially, **Wyzer uses absolute paths starting from the project root**, denoted
 If an `import` points to a module that has not yet been `mod`ded into the compilation tree, the compiler will instantly find it from the project root and **lazy-load it dynamically** into both the typechecker and interpreter.
 
 ```wyzer
-// Automatically crawls from project root to find src/math/geometry.wyz
-import bundle::math::geometry;
+// Automatically crawls from project root to find math/geometry.wyz
+import "math/geometry";
 
 // External standard library modules are also supported
-import std::io;
+import "std/io";
 
 fn main() {
     // You can call it via the resolved path

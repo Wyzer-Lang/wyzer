@@ -1403,29 +1403,48 @@ let rec check_item env item =
 
 and check_program_inner env prog =
   let env_with_imports = List.fold_left (fun e (imp : import_decl) ->
-    let prefix = match imp.alias with
-      | Some a -> a
-      | None -> List.hd (List.rev imp.path)
+    let basename = Filename.basename imp.path in
+    let default_prefix = if String.ends_with ~suffix:".wyz" basename then
+        String.sub basename 0 (String.length basename - 4)
+      else basename
     in
-    let e1 = { e with imports = StringMap.add prefix (imp.path, imp.span, ref false) e.imports } in
-    match imp.path with
-    | "bundle" :: rest ->
-        let mod_name = List.hd rest in
-        if StringMap.mem mod_name e1.modules then e1 else (
-          let mod_path = Filename.concat e1.project_root (mod_name ^ ".wyz") in
-          if Sys.file_exists mod_path then
-            let inx = open_in mod_path in
-            let lexbuf = Lexing.from_channel inx in
-            lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
-            let parsed_prog = try Parser.parse_program Lexer.read lexbuf with
-              | _ -> close_in inx; raise (TypeError ("Failed to parse imported module " ^ mod_name))
-            in
-            close_in inx;
-            let mod_env = check_program_inner { empty_env with project_root = e1.project_root } parsed_prog in
-            { e1 with modules = StringMap.add mod_name mod_env e1.modules }
-          else e1
-        )
-    | _ -> e1
+    let is_std = String.starts_with ~prefix:"std/" imp.path in
+    if is_std then
+      let prefix = match imp.alias with Some a -> a | None -> default_prefix in
+      let path_list = String.split_on_char '/' imp.path in
+      { e with imports = StringMap.add prefix (path_list, imp.span, ref false) e.imports }
+    else
+      let mod_path = Filename.concat e.project_root imp.path in
+      let mod_path = if String.ends_with ~suffix:".wyz" mod_path then mod_path else mod_path ^ ".wyz" in
+      if not (Sys.file_exists mod_path) then
+        raise (TypeError ("Module file not found: " ^ mod_path));
+      
+      let inx = open_in mod_path in
+      let lexbuf = Lexing.from_channel inx in
+      lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = mod_path };
+      let parsed_prog = try Parser.parse_program Lexer.read lexbuf with
+        | _ -> close_in inx; raise (TypeError ("Failed to parse imported module " ^ imp.path))
+      in
+      close_in inx;
+      let mod_env = check_program_inner { empty_env with project_root = e.project_root } parsed_prog in
+      
+      match imp.alias with
+      | Some a ->
+          let e1 = { e with modules = StringMap.add a mod_env e.modules } in
+          { e1 with imports = StringMap.add a ([a], imp.span, ref false) e1.imports }
+      | None ->
+          let merge_map m1 m2 = StringMap.fold StringMap.add m1 m2 in
+          { e with 
+            funcs = merge_map mod_env.funcs e.funcs;
+            globals = merge_map mod_env.globals e.globals;
+            enums = merge_map mod_env.enums e.enums;
+            structs = merge_map mod_env.structs e.structs;
+            generic_items = merge_map mod_env.generic_items e.generic_items;
+            roles = merge_map mod_env.roles e.roles;
+            traits = merge_map mod_env.traits e.traits;
+            impls = mod_env.impls @ e.impls;
+            modules = merge_map mod_env.modules e.modules;
+          }
   ) env prog.Ast.imports in
   let env_final = 
     try List.fold_left check_item env_with_imports prog.items

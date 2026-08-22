@@ -218,7 +218,7 @@ and item = item_node loc
 [@@deriving show, eq]
 
 type import_decl = {
-  path: string list;
+  path: string;
   alias: string option;
   span: span;
 }

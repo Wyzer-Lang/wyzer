@@ -321,8 +321,8 @@ We use standard rules with `match`. There are no hidden exceptions. This is the 
 Wyzer uses clear, path-based modules. There are no header files and no hidden global names. You must use the full path to an outside name unless you import it.
 
 ```
-import std::io;
-import std::collections as coll;
+import "std/io";
+import "std/collections" as coll;
 
 fn main() -> Result<u8, str> {
     io::println("hello, wyzer");
@@ -427,7 +427,7 @@ Right now, you can mix changeable (`mut`) variables with one-time use (linear) r
 ### 14.1 Printing
 
 ```
-import std::io;
+import "std/io";
 
 fn main() -> Result<u8, str> {
     io::println("hello, wyzer");

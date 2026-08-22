@@ -1,7 +1,7 @@
 // Testing error reporting 
 
-import std::fs;
-import std::io;
+import "std/fs";
+import "std/io";
 
 fn process_file(filename: string, _mode: i32, unused_param: bool) {
     let used_var = 1;
