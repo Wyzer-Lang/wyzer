@@ -1,3 +1,11 @@
+> [!NOTE]
+> This project is going under rewrite as we research on our new memory model , you can check out the rewrite branch for progress , rewrite-unstable branch for experiments
+> the most experimental changes and the overall unsettled things will be pushed to rewrite-unstable and once those things are settled
+> they will be moved over to rewrite
+
+> [!NOTE]
+> people interested in contributing to the project , including the research may email me at atsharma623@gmail.com or message me on discord (atixwasfound) for further guidance 
+
 # The Wyzer Programming Language
 Wyzer is a statically typed, compiled, resource-oriented programming language with integrated distributed safety via choreographic programming and a perceus memory model.
 
