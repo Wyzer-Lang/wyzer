@@ -1,30 +1,42 @@
-# 1. Introduction to Wyzer
+# Introduction to Wyzer
 
-Welcome to Wyzer! Wyzer is a safe and fast programming language. It is built to create strong systems and secure networks.
+Hi there, fellow programmer! Welcome to Wyzer. Wyzer is a safe and blazingly
+fast programming language built to create strong systems and secure networks.
 
-## The Core Philosophy
-Most bugs in complex systems (like memory leaks or network errors) happen because it is not clear who owns a resource.
+## What's the thing about Wyzer that makes it special?
 
-Wyzer fixes this by tracking everything you create:
-* Memory is managed automatically without pausing your program. It is as fast as C, but much easier to learn than Rust.
-* Data is shared safely. The compiler checks that you use resources correctly.
-* Network features are built-in. The compiler proves that your network code will not get stuck.
+Most bugs in complex programs (e.g., memory leaks and network errors) occur
+because the identity of who owns a certain resource is not clear. Wyzer
+solves this problem by tracking everything you create.
 
-## Your First Program
+- Memory is managed automatically by the compiler, without pausing the program.
+  This makes Wyzer as fast as C, but has a less steep learning curve than Rust.
+
+- Data is shared safely. The compiler checks that you use resources correctly.
+
+- Network features are built-in with the language. The compiler shows that your
+  network code will not get stuck.
+
+## "Hello World!" in Wyzer
+To print "Hello World!" in Wyzer, it would be:
 
 ```wyzer
 import "std/io";
 
 fn main() {
-    std::io::println("Hello, Wyzer!");
+    std::io::println("Hello, World!");
 }
+    
 ```
 
-Wyzer code is easy to read. There is no hidden magic. You must write exactly what you mean. However, the compiler is smart enough to figure out the sizes of your numbers automatically!
+As you can see, Wyzer's syntax is easy to read. You must write exactly what you want the program to do.
+However, the compiler is smart enough to figure out the sizes of your numbers automatically!
 
-## Running Code
-Right now, Wyzer runs through an OCaml interpreter.
-To run a file, type this in your terminal:
+## Running your code
+As of now, Wyzer is written in OCaml and runs through an OCaml interpreter.
+To run your program, enter this in your terminal:
+
 ```bash
-dune exec wyzerc -- your_file.wyz
+dune exec wyzerc -- [filename].wyz
 ```
+
