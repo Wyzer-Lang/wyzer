@@ -1,0 +1,13 @@
+// test: the same value passed to two parameters that may change it
+// status: pending (decision needed: may two writers alias?)
+// expect: undecided
+//
+// Rust rejects this. The draft mutation rule only forbids stale references,
+// which would allow it. Decide which one SORM wants.
+
+fn swap(a: Int!, b: Int!) { }
+
+fn main() {
+    let x = Int.new(1);
+    swap(x, x);
+}

@@ -1,0 +1,10 @@
+// test: returning a reference to a local
+// status: settled
+// expect: reject
+
+struct Config { value: Int; }
+
+fn make_ref() -> &Config {
+    let c = Config.new(1);
+    ret &c;   // ERROR(dangling-ref)
+}

@@ -1,0 +1,16 @@
+// test: two threads reading the same value
+// status: pending (concurrency rules are not written yet)
+// expect: accept
+//
+// config must outlive both threads, so the function waits for them before it ends.
+
+struct Config { limit: Int; }
+
+fn worker(c: &Config) { use(c.limit); }
+
+fn main() {
+    let config = Config.new(5);
+    spawn(worker, &config);
+    spawn(worker, &config);
+    join_all();
+}

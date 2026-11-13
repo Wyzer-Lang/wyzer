@@ -1,0 +1,20 @@
+// test: a parent reaching into a child's child
+// status: settled
+// expect: accept
+//
+// App contains Logger, and Logger contains Buffer.
+// App outlives everything inside it, so no ~ is needed.
+
+struct Buffer { size: Int; }
+struct Logger { buffer: Buffer; }
+struct Renderer { id: Int; }
+
+struct App {
+    logger: Logger;
+    renderer: Renderer;
+}
+
+fn inspect(app: &App) {
+    let b = &app.logger.buffer;
+    use(b);
+}

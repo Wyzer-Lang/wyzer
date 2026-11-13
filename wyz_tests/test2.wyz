@@ -1,0 +1,17 @@
+// test: fridge, missing tilde
+// status: settled
+// expect: reject
+//
+// Renderer points into a field of its sibling Logger.
+// Logger could be replaced or destroyed while Renderer still holds the pointer,
+// and the compiler cannot prove otherwise.
+
+struct SharedData { total: Int; }
+
+struct Logger   { data: SharedData; }
+struct Renderer { data: &SharedData; }  // ERROR(needs-tilde)
+
+struct App {
+    logger: Logger;
+    renderer: Renderer;
+}

@@ -1,0 +1,10 @@
+// test: changing a value while a reference to it is also passed
+// status: draft
+// expect: reject
+
+fn append(dst: Vec!, src: &Vec) { }
+
+fn main() {
+    let v = Vec.new();
+    append(v, &v);   // ERROR(alias-conflict)
+}

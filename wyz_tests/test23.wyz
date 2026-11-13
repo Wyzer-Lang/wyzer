@@ -1,0 +1,14 @@
+// test: two threads writing the same value
+// status: pending (concurrency rules are not written yet)
+// expect: reject
+
+struct Counter { n: Int; }
+
+fn bump(c: Counter!) { }
+
+fn main() {
+    let counter = Counter.new(0);
+    spawn(bump, counter);
+    spawn(bump, counter);   // ERROR(data-race)
+    join_all();
+}

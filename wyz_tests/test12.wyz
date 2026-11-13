@@ -1,0 +1,14 @@
+// test: writing through a shared value
+// status: draft
+// expect: reject
+//
+// A ~ value belongs to the common owner, not to either sibling.
+// By default it is read-only for the siblings.
+
+struct Config   { name: Str; }
+struct Logger   { config: ~Config; }
+struct Renderer { config: ~Config; }
+
+fn rename(l: &Logger!) {
+    l.config.name = "new";   // ERROR(shared-write)
+}

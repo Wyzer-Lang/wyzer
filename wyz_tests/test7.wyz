@@ -1,0 +1,11 @@
+// test: stale reference after mutation
+// status: draft
+// expect: reject
+
+fn main() {
+    let list = Vec.new();
+    list.push(1);
+    let first = &list[0];
+    list.push(2);   // may move the storage, so first is now stale
+    use(first);     // ERROR(stale-ref)
+}

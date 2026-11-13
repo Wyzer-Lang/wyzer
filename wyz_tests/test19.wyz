@@ -1,0 +1,20 @@
+// test: returning a reference into a parameter
+// status: pending (function boundaries are open)
+// expect: accept
+// place: result -> region of parameter list
+//
+// The result lives as long as the argument it points into.
+// The question is whether the compiler can infer this without an annotation.
+
+struct Item { id: Int; }
+struct List { items: Vec<Item>; }
+
+fn first(list: &List) -> &Item {
+    ret &list.items[0];
+}
+
+fn main() {
+    let list = List.new();
+    let f = first(&list);
+    use(f);
+}

@@ -1,0 +1,22 @@
+// test: a reference that outlives the value it points at
+// status: draft
+// expect: reject
+//
+// r lives in the whole function, but y only lives in the inner block.
+// After the block, r would point at a value that is gone.
+
+struct Item { id: Int; }
+
+fn pick_first(a: &Item, b: &Item) -> &Item {
+    ret a;
+}
+
+fn main() {
+    let x = Item.new(1);
+    let r = pick_first(&x, &x);
+    {
+        let y = Item.new(2);
+        r = pick_first(&y, &y);   // ERROR(dangling-ref)
+    }
+    use(r);
+}

@@ -1,0 +1,18 @@
+// test: returning an owned value
+// status: draft (function boundaries are still open)
+// expect: accept
+// place: c -> frame(caller)
+//
+// The value moves out to the caller's region.
+// How much copying this needs is an open question.
+
+struct Config { value: Int; }
+
+fn make() -> Config {
+    let c = Config.new(1);
+    ret c;
+}
+
+fn main() {
+    let config = make();
+}
