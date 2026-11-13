@@ -1,3 +1,0 @@
-(test
- (name wyzer_test)
- (libraries wyzer_lib))

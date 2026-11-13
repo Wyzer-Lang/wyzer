@@ -1,0 +1,24 @@
+// test: tree with parent pointers
+// status: pending (depends on: nodes-never-move)
+// expect: accept
+//
+// A parent contains its children, so a child can safely point at its parent.
+// No ~ is needed.
+// This only holds if a collection never moves its items when it grows.
+// If nodes can move, the parent pointer goes stale and this must be rejected.
+
+struct Node {
+    id: Int;
+    parent: Option<&Node>;
+    children: Vec<Node>;
+}
+
+fn add_child(parent: Node!, id: Int) {
+    let child = Node.new(id, Some(parent));
+    parent.children.push(child);
+}
+
+fn main() {
+    let root = Node.new(10, None);
+    add_child(root, 20);
+}

@@ -1,0 +1,14 @@
+// test: a struct whose field points into another field of itself
+// status: pending
+// expect: accept
+// place: buffer -> Cursor
+//
+// buffer and pos are siblings inside Cursor, so both are ~.
+// Rust rejects this pattern in safe code.
+
+struct Cursor {
+    buffer: ~Buffer;
+    pos: ~Buffer;
+}
+
+struct Buffer { size: Int; }

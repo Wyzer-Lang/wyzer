@@ -1,0 +1,11 @@
+// test: fresh reference after mutation
+// status: draft
+// expect: accept
+
+fn main() {
+    let list = Vec.new();
+    list.push(1);
+    list.push(2);
+    let first = &list[0];   // taken after the last mutation
+    use(first);
+}

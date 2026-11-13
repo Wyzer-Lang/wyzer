@@ -1,0 +1,26 @@
+// test: sequential handoff (the plumber and the Wi-Fi password)
+// status: settled
+// expect: accept
+// place: config -> frame(main)
+//
+// validator is destroyed before logger exists, so the two never overlap.
+// The first placement rule bound config to validator, its first user.
+// That left logger with a dangling reference.
+// Rule P looks at every use over the whole lifetime, so config goes in main.
+
+struct Config    { value: Int; }
+struct Validator { config: &Config; }
+struct Logger    { config: &Config; }
+
+fn validate(v: &Validator) { }
+fn log(l: &Logger) { }
+
+fn main() {
+    let config = Config.new(42);
+    {
+        let validator = Validator.new(config);
+        validate(validator);
+    }
+    let logger = Logger.new(config);
+    log(logger);
+}

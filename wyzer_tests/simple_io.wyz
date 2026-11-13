@@ -1,3 +1,0 @@
-fn main() {
-    std::io::println(f"A {1} B {2} C");
-}

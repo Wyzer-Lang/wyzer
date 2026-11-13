@@ -11,6 +11,12 @@ Wyzer is a statically typed, compiled, resource-oriented programming language wi
 - low runtime cost
 - safe metaprogramming
 
+## TODOS
+- [ x ] Get started
+- [ x ] Basic lexer , Parser and AST, checker and error printing
+- [] Expand the language
+
+
 Community: Join our Discord server: https://discord.gg/RhpPhkTrVu
 
 ## Notable Examples

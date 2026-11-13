@@ -1,0 +1,21 @@
+// test: doubly linked list
+// status: pending (heap structures without containment are an open problem)
+// expect: accept
+// place: a -> frame(main)
+// place: b -> frame(main)
+//
+// next and prev point at siblings that do not contain each other, so both need ~.
+// Rust cannot express this without Rc, RefCell and Weak, or unsafe code.
+
+struct Node {
+    value: Int;
+    next: Option<~Node>;
+    prev: Option<~Node>;
+}
+
+fn main() {
+    let a = Node.new(1, None, None);
+    let b = Node.new(2, None, None);
+    a.next = Some(b);
+    b.prev = Some(a);
+}

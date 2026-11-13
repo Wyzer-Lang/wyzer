@@ -1,0 +1,18 @@
+// test: two-node cycle
+// status: settled
+// expect: accept
+// place: x -> frame(main)
+// place: y -> frame(main)
+//
+// x and y point at each other. Neither contains the other, so both need ~.
+// No enclosing object exists, so the creating frame owns both.
+// They are freed together when main ends. No counts, no leak.
+
+struct Node { other: ~Node; }
+
+fn main() {
+    let x = Node.new();
+    let y = Node.new();
+    x.other = y;
+    y.other = x;
+}

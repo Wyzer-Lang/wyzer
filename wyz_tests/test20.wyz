@@ -1,0 +1,24 @@
+// test: a result that depends on only one of two parameters
+// status: pending (function boundaries are open)
+// expect: accept
+//
+// pick_first returns a, so the result only needs a to stay alive.
+// Using s after y is gone would be a mistake only if the result depended on y.
+// The compiler has to work out that it does not.
+
+struct Item { id: Int; }
+
+fn pick_first(a: &Item, b: &Item) -> &Item {
+    ret a;
+}
+
+fn main() {
+    let x = Item.new(1);
+    let r = pick_first(&x, &x);
+    {
+        let y = Item.new(2);
+        let s = pick_first(&x, &y);
+        use(s);
+    }
+    use(r);
+}

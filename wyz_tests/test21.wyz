@@ -1,0 +1,10 @@
+// test: returning a reference to a field of a local
+// status: settled
+// expect: reject
+
+struct Config { name: Str; }
+
+fn name_of() -> &Str {
+    let c = Config.new("x");
+    ret &c.name;   // ERROR(dangling-ref)
+}

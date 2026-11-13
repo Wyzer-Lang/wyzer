@@ -1,0 +1,27 @@
+// test: removing a node that another node points at
+// status: pending (what removal does to a ~ value is undecided)
+// expect: reject
+//
+// The edge still points at a node that has been removed.
+
+struct Node {
+    id: Int;
+    edges: Vec<~Node>;
+}
+
+struct Graph {
+    nodes: Vec<Node>;
+}
+
+fn connect(a: Node!, b: ~Node) {
+    a.edges.push(b);
+}
+
+fn main() {
+    let g = Graph.new();
+    g.nodes.push(Node.new(1));
+    g.nodes.push(Node.new(2));
+    connect(g.nodes[0], g.nodes[1]);
+    remove(g.nodes, 1);
+    use(g.nodes[0].edges);   // ERROR(stale-ref)
+}

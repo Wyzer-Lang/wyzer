@@ -1,0 +1,23 @@
+// test: values removed from a long-lived owner
+// status: pending (space growth is an open problem)
+// expect: accept
+// note: space-growth
+//
+// Removed items stay in the cache's region until the cache itself ends.
+// The program is correct, but memory is not reclaimed in between.
+
+struct Item { id: Int; }
+struct Cache { items: Vec<Item>; }
+
+fn churn(cache: Cache!) {
+    let item = Item.new(1);
+    cache.items.push(item);
+    remove(cache.items, 0);
+}
+
+fn main() {
+    let cache = Cache.new();
+    churn(cache);
+    churn(cache);
+    churn(cache);
+}

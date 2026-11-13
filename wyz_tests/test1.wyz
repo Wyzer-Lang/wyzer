@@ -1,0 +1,18 @@
+// test: fridge
+// status: settled
+// expect: accept
+// place: data -> App
+//
+// Logger and Renderer are siblings and both hold the data.
+// Neither contains the other, so ~ is required.
+// Rule P places the data in App, the nearest owner that holds both.
+
+struct SharedData { total: Int; }
+
+struct Logger   { data: ~SharedData; }
+struct Renderer { data: ~SharedData; }
+
+struct App {
+    logger: Logger;
+    renderer: Renderer;
+}

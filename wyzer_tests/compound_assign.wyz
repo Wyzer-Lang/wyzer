@@ -1,8 +1,0 @@
-fn main() {
-    var x: u32 = 10;
-    x += 5;
-    x -= 2;
-    x *= 3;
-    x /= 2;
-    std::io::println(x);
-}

@@ -1,0 +1,12 @@
+// test: two-node cycle, missing tilde
+// status: settled
+// expect: reject
+
+struct Node { other: &Node; }
+
+fn main() {
+    let x = Node.new();
+    let y = Node.new();
+    x.other = y;  // ERROR(needs-tilde)
+    y.other = x;  // ERROR(needs-tilde)
+}
